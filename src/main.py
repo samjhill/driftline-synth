@@ -21,6 +21,7 @@ from midi_controller import MidiController
 from osc_client import OscClient
 from patch_generator import PatchGenerator
 from patch_model import Patch
+from play_tracker import PlayTracker
 from state_store import StateStore
 from visual_generator import VisualGenerator
 
@@ -44,8 +45,10 @@ class PiAmbientSynth:
         self.visual = VisualGenerator(config)
         self.eink = EInkDisplay(config)
         self.midi = MidiController(config)
+        self.play = PlayTracker()
         self._patch: Patch | None = None
         self._running = True
+        self._reseed_morph = config.get("audio", {}).get("patch_morph_seconds", 6.0)
 
     def _resolve_patch(self) -> Patch:
         saved = self.state_store.load_current()
@@ -77,6 +80,7 @@ class PiAmbientSynth:
     def _wire_midi(self) -> None:
         self.midi.on_note_on = self._on_note_on
         self.midi.on_note_off = self._on_note_off
+        self.midi.on_hold_change = self._on_hold_change
         self.midi.on_reseed_requested = self.reseed
         self.midi.on_freeze_requested = self.freeze
         self.midi.on_evolve_toggle_requested = self.toggle_evolve
@@ -102,10 +106,28 @@ class PiAmbientSynth:
             self.midi.on_note_on = debug_note_on
             self.midi.on_note_off = debug_note_off
 
+    def _sync_texture(self, root: int | None) -> None:
+        self.osc.texture_root(root)
+        self.osc.arp_active(self.play.arp_active)
+
+    def _on_hold_change(self, on: bool) -> None:
+        if self.play.set_hold(on):
+            self.osc.hold_latch(on)
+            self.osc.texture_root(self.play.lowest_active_note())
+            logger.info("Hold latch: %s", on)
+
     def _on_note_on(self, note: int, velocity: int, channel: int) -> None:
+        root, arp_changed = self.play.note_on(note)
+        if arp_changed:
+            self.osc.arp_active(self.play.arp_active)
+        if root is not None:
+            self.osc.texture_root(root)
         self.osc.note_on(note, velocity)
 
     def _on_note_off(self, note: int, velocity: int, channel: int) -> None:
+        root = self.play.note_off(note)
+        if not self.play.hold_latched:
+            self.osc.texture_root(root)
         self.osc.note_off(note, velocity)
 
     def _update_display(self, patch: Patch, favorite: bool = False) -> None:
@@ -119,15 +141,24 @@ class PiAmbientSynth:
             self.eink.show_patch(patch, img)
 
     def reseed(self) -> None:
+        old = self._patch
         seed = random.randint(0, 2**31 - 1)
         evolve = self._patch.evolve_enabled if self._patch else False
         if self._patch:
             self._patch = self.patch_gen.morph_from(self._patch, seed, evolve)
         else:
             self._patch = self.patch_gen.generate(seed=seed, evolve_enabled=evolve)
+
+        if self.config.get("eink", {}).get("enabled", True) and old:
+            wipe = self.visual.render_reseed_wipe(old, self._patch)
+            self.eink.show_image(wipe)
+            time.sleep(0.35)
+
         self.state_store.save_current(self._patch)
+        self.osc.reseed_transition(2.0)
         self.osc.reseed(seed)
-        self.osc.send_patch(self._patch)
+        morph = max(self._reseed_morph, 7.0)
+        self.osc.send_patch(self._patch, morph_seconds=morph)
         self._update_display(self._patch)
         logger.info("Reseeded: %s", self._patch.summary())
 
@@ -171,6 +202,7 @@ class PiAmbientSynth:
 
 
 def main() -> int:
+    global config
     parser = argparse.ArgumentParser(description="Pi Ambient Synth")
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--debug-midi", action="store_true")

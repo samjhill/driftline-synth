@@ -50,6 +50,7 @@ class MidiController:
         self.on_reseed_requested: Callable[[], None] | None = None
         self.on_freeze_requested: Callable[[], None] | None = None
         self.on_evolve_toggle_requested: Callable[[], None] | None = None
+        self.on_hold_change: Callable[[bool], None] | None = None
 
     @staticmethod
     def list_inputs() -> list[str]:
@@ -115,6 +116,9 @@ class MidiController:
                 self._shift_held = True
             elif msg.control == 63 and msg.value < 64:
                 self._shift_held = False
+            if msg.control == 64:
+                if self.on_hold_change:
+                    self.on_hold_change(msg.value >= 64)
             if msg.control in TRANSPORT_CC:
                 event = TRANSPORT_CC[msg.control]
                 if self._shift_held:

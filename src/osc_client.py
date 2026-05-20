@@ -70,6 +70,18 @@ class OscClient:
     def reseed(self, seed: int) -> None:
         self._client.send_message("/pi_synth/reseed", [seed])
 
+    def reseed_transition(self, seconds: float = 2.0) -> None:
+        self._client.send_message("/pi_synth/reseed_transition", [seconds])
+
+    def texture_root(self, note: int | None) -> None:
+        self._client.send_message("/pi_synth/texture_root", [-1 if note is None else note])
+
+    def arp_active(self, active: bool) -> None:
+        self._client.send_message("/pi_synth/arp_active", [1 if active else 0])
+
+    def hold_latch(self, on: bool) -> None:
+        self._client.send_message("/pi_synth/hold", [1 if on else 0])
+
     def evolve(self, enabled: bool) -> None:
         self._client.send_message("/pi_synth/evolve", [1 if enabled else 0])
 

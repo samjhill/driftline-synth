@@ -178,4 +178,19 @@ class VisualGenerator:
         if self.include_scale_name:
             draw.text((4, y), patch.scale_name[:18], fill=0, font=font)
         if patch.evolve_enabled:
-            draw.text((w - 36, 2), "~evolve", fill=0, font=font)
+            draw.text((w - 32, 2), "~evolve", fill=0, font=font)
+            pulse = 2 + int((patch.seed % 5))
+            draw.ellipse((w - 12, 4, w - 12 + pulse, 4 + pulse), fill=0)
+
+    def render_reseed_wipe(self, old_patch: Patch, new_patch: Patch) -> Image.Image:
+        """Brief transitional frame between patch sigils."""
+        rng = _seed_rng(new_patch.seed, "wipe")
+        w, h = self.width, self.height
+        img = self.render_patch(old_patch)
+        draw = ImageDraw.Draw(img)
+        band = int(rng.integers(h // 4, 3 * h // 4))
+        for x in range(w):
+            if rng.random() < 0.55:
+                draw.line([(x, max(0, band - 6)), (x, min(h - 1, band + 6))], fill=0, width=1)
+        draw.text((4, h - 14), new_patch.name[:20], fill=0)
+        return img

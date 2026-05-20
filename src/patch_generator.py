@@ -1,4 +1,4 @@
-"""Curated patch randomization — same world, different weather."""
+"""Curated patch randomization — scene archetypes + variation."""
 
 from __future__ import annotations
 
@@ -10,19 +10,84 @@ import yaml
 
 from patch_model import Patch
 
-PATCH_NAMES = [
-    "Driftline",
-    "Mist Shore",
-    "Low Tide",
-    "Pale Horizon",
-    "Still Air",
-    "Glass Fog",
-    "Quiet Ridge",
-    "Soft Meridian",
-    "Veil Light",
-    "Dusk Field",
-    "Hollow Bay",
-    "Silver Haze",
+# Archetype defines biased ranges (lo, hi) per parameter — "same world, different weather"
+ARCHETYPES: dict[str, dict[str, Any]] = {
+    "fog_bank": {
+        "label": "Fog Bank",
+        "scales": ["Aeolian", "Dorian", "Minor Pentatonic"],
+        "ranges": {
+            "filter_cutoff": (450.0, 1200.0),
+            "release": (2.0, 6.5),
+            "reverb_mix": (0.45, 0.72),
+            "reverb_size": (0.75, 0.95),
+            "noise_level": (0.06, 0.18),
+            "brightness": (0.2, 0.45),
+            "drift_amount": (0.008, 0.025),
+        },
+    },
+    "glass_room": {
+        "label": "Glass Room",
+        "scales": ["Lydian", "Major Pentatonic", "Suspended"],
+        "ranges": {
+            "filter_cutoff": (2200.0, 4200.0),
+            "attack": (0.005, 0.12),
+            "release": (0.4, 1.8),
+            "delay_mix": (0.18, 0.42),
+            "brightness": (0.65, 0.95),
+            "reverb_mix": (0.22, 0.45),
+        },
+    },
+    "tape_hymn": {
+        "label": "Tape Hymn",
+        "scales": ["Minor Pentatonic", "Hirajoshi", "In Sen"],
+        "ranges": {
+            "oscillator_blend": (0.35, 0.65),
+            "noise_level": (0.08, 0.18),
+            "lfo_rate": (0.04, 0.12),
+            "drift_amount": (0.012, 0.025),
+            "texture_density": (0.5, 0.9),
+            "reverb_mix": (0.35, 0.6),
+        },
+    },
+    "deep_floor": {
+        "label": "Deep Floor",
+        "scales": ["Aeolian", "Dorian"],
+        "ranges": {
+            "sub_level": (0.18, 0.35),
+            "filter_cutoff": (450.0, 900.0),
+            "release": (1.5, 4.0),
+            "stereo_width": (0.4, 0.65),
+            "brightness": (0.2, 0.4),
+            "texture_density": (0.35, 0.7),
+        },
+    },
+    "mist_shore": {
+        "label": "Mist Shore",
+        "scales": ["Dorian", "Suspended", "Aeolian"],
+        "ranges": {
+            "filter_cutoff": (800.0, 2000.0),
+            "reverb_mix": (0.4, 0.65),
+            "delay_mix": (0.12, 0.32),
+            "lfo_depth": (0.08, 0.22),
+            "stereo_width": (0.55, 0.95),
+        },
+    },
+    "veil_light": {
+        "label": "Veil Light",
+        "scales": ["Lydian", "Major Pentatonic", "Dorian"],
+        "ranges": {
+            "filter_cutoff": (1600.0, 3200.0),
+            "attack": (0.02, 0.35),
+            "release": (1.0, 3.5),
+            "reverb_size": (0.6, 0.85),
+            "brightness": (0.55, 0.85),
+            "texture_density": (0.2, 0.55),
+        },
+    },
+}
+
+PATCH_FLAVOR = [
+    "Driftline", "Pale", "Still", "Quiet", "Soft", "Hollow", "Silver", "Low", "Dusk",
 ]
 
 DELAY_TIMES = (0.25, 0.375, 0.5, 0.75)
@@ -67,18 +132,44 @@ class PatchGenerator:
             return [{"name": "Dorian", "intervals": [0, 2, 3, 5, 7, 9, 10]}]
         return family
 
+    def _pick_archetype(self, rng: random.Random) -> tuple[str, dict[str, Any]]:
+        key = rng.choice(list(ARCHETYPES.keys()))
+        return key, ARCHETYPES[key]
+
+    def _pick_param(
+        self, rng: random.Random, key: str, archetype_ranges: dict[str, tuple[float, float]]
+    ) -> float:
+        if key in archetype_ranges:
+            lo, hi = archetype_ranges[key]
+        else:
+            lo, hi = PARAM_RANGES[key]
+        return lo + rng.random() * (hi - lo)
+
     def generate(self, seed: int | None = None, evolve_enabled: bool = False) -> Patch:
         if seed is None:
             seed = random.randint(0, 2**31 - 1)
         rng = random.Random(seed)
-        scale = rng.choice(self._scale_choices())
-        name = rng.choice(PATCH_NAMES)
-        if rng.random() < 0.4:
+        _arch_key, archetype = self._pick_archetype(rng)
+        arch_ranges = archetype.get("ranges", {})
+        arch_scales = archetype.get("scales", [])
+        all_scales = self._scale_choices()
+        if arch_scales:
+            scale = rng.choice([s for s in all_scales if s["name"] in arch_scales] or all_scales)
+        else:
+            scale = rng.choice(all_scales)
+
+        flavor = rng.choice(PATCH_FLAVOR)
+        name = f"{archetype['label']} · {flavor}"
+        if rng.random() < 0.35:
             name = f"{name} {rng.randint(2, 99)}"
 
         def pick(key: str) -> float:
-            lo, hi = PARAM_RANGES[key]
-            return lo + rng.random() * (hi - lo)
+            return self._pick_param(rng, key, arch_ranges)
+
+        if _arch_key == "glass_room":
+            delay_time = rng.choice((0.25, 0.375))
+        else:
+            delay_time = rng.choice(DELAY_TIMES)
 
         return Patch(
             seed=seed,
@@ -98,7 +189,7 @@ class PatchGenerator:
             lfo_rate=pick("lfo_rate"),
             lfo_depth=pick("lfo_depth"),
             delay_mix=pick("delay_mix"),
-            delay_time=rng.choice(DELAY_TIMES),
+            delay_time=delay_time,
             reverb_mix=pick("reverb_mix"),
             reverb_size=pick("reverb_size"),
             texture_density=pick("texture_density"),
@@ -108,9 +199,11 @@ class PatchGenerator:
         )
 
     def morph_from(self, base: Patch, seed: int, evolve_enabled: bool | None = None) -> Patch:
-        """Generate a related patch — keeps some character from base."""
         rng = random.Random(seed)
-        new = self.generate(seed=seed, evolve_enabled=evolve_enabled if evolve_enabled is not None else base.evolve_enabled)
+        new = self.generate(
+            seed=seed,
+            evolve_enabled=evolve_enabled if evolve_enabled is not None else base.evolve_enabled,
+        )
         if rng.random() < 0.5:
             new.root_note = base.root_note
         if rng.random() < 0.35:

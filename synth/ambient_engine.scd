@@ -1,13 +1,17 @@
-// Pi Ambient Synth — SuperCollider headless engine
+// Pi Ambient Synth — SuperCollider headless engine (phase 1 fun)
 (
-var patchParams, morphTime, masterVol, evolveEnabled;
+var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth;
-var delayBus, reverbBus;
+var textureRoot, holdLatch, arpActive, duckLevel;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
 masterVol = 0.65;
 evolveEnabled = false;
+textureRoot = 48;
+holdLatch = false;
+arpActive = false;
+duckLevel = 1.0;
 
 patchParams[\filter_cutoff] = 1400.0;
 patchParams[\filter_resonance] = 0.2;
@@ -31,12 +35,7 @@ patchParams[\brightness] = 0.6;
 patchParams[\root_note] = 48;
 
 ~setParam = { |key, val|
-	var numKey = key.asSymbol;
-	if(patchParams.keys.includes(numKey), {
-		patchParams[numKey] = val;
-	}, {
-		patchParams[numKey] = val;
-	});
+	patchParams[key.asSymbol] = val;
 };
 
 ~morphParam = { |key, target, time|
@@ -67,22 +66,43 @@ patchParams[\root_note] = 48;
 		});
 	};
 	if(textureSynth.notNil, {
+		textureRoot = patchParams[\root_note] ? 48;
 		textureSynth.set(
 			\density, patchParams[\texture_density] ? 0.5,
-			\root, patchParams[\root_note] ? 48,
+			\root, textureRoot,
 			\noise, patchParams[\noise_level] ? 0.05,
 			\rev, patchParams[\reverb_mix] ? 0.45
 		);
 	});
 };
 
+~startEvolve = {
+	if(evolveRoutine.notNil, { evolveRoutine.stop });
+	evolveRoutine = fork {
+		loop {
+			8.wait;
+			if(evolveEnabled.not, {
+				evolveRoutine = nil;
+				^this;
+			});
+			[
+				{ ~morphParam.(\filter_cutoff, (patchParams[\filter_cutoff] * rrand(0.88, 1.12)).clip(450, 4200), 6) },
+				{ ~morphParam.(\reverb_size, (patchParams[\reverb_size] + rrand(-0.08, 0.12)).clip(0.55, 0.98), 10) },
+				{ ~morphParam.(\lfo_depth, (patchParams[\lfo_depth] + rrand(-0.04, 0.06)).clip(0.02, 0.22), 5) },
+				{ ~morphParam.(\texture_density, (patchParams[\texture_density] + rrand(-0.1, 0.1)).clip(0.1, 0.9), 8) },
+			].choose.value;
+		};
+	};
+};
+
 SynthDef(\piAmbientVoice, {
-	|out=0, freq=440, amp=0.3, gate=1,
+	|out=0, freq=440, amp=0.3, gate=1, vel=100,
 	oscBlend=0.5, subLevel=0.15, noiseLevel=0.05,
 	cutoff=1400, res=0.2, atk=0.05, dec=0.8, sus=0.6, rel=2.5,
 	drift=0.008, lfoRate=0.08, lfoDepth=0.08, width=0.7, bright=0.6,
 	delayMix=0.2, revMix=0.45|
-	var sig, env, sub, noise, lfo, pan;
+	var sig, env, sub, noise, lfo, pan, velCut;
+	velCut = cutoff * vel.linlin(0, 127, 0.72, 1.18);
 	lfo = SinOsc.kr(lfoRate).range(1 - lfoDepth, 1 + lfoDepth);
 	sig = Mix([
 		LFSaw.ar(freq * lfo * (1 + drift * LFNoise2.kr(0.2)), 0, 0.35 * oscBlend),
@@ -92,10 +112,10 @@ SynthDef(\piAmbientVoice, {
 	sub = SinOsc.ar(freq / 2 * lfo, 0, subLevel * 0.4);
 	noise = PinkNoise.ar(noiseLevel * 0.08);
 	sig = sig + sub + noise;
-	sig = LPF.ar(sig, cutoff * bright.linlin(0.2, 0.95, 0.6, 1.2));
-	sig = RLPF.ar(sig, cutoff, res);
+	sig = LPF.ar(sig, velCut * bright.linlin(0.2, 0.95, 0.6, 1.2));
+	sig = RLPF.ar(sig, velCut, res);
 	env = EnvGen.kr(Env.adsr(atk, dec, sus, rel), gate, doneAction: 2);
-	pan = SinOsc.kr(0.07).range(width.neg, width);
+	pan = SinOsc.kr(0.07 + (width * 0.03)).range(width.neg, width);
 	sig = Pan2.ar(sig * env * amp, pan);
 	Out.ar(out, sig);
 	Out.ar(6, sig * delayMix);
@@ -103,8 +123,8 @@ SynthDef(\piAmbientVoice, {
 }).add;
 
 SynthDef(\piTextureDrone, {
-	|out=0, root=48, density=0.5, noise=0.05, rev=0.45|
-	var freq, sig, fifth, oct;
+	|out=0, root=48, density=0.5, noise=0.05, rev=0.45, duck=1.0, shimmer=0.0|
+	var freq, sig, fifth, oct, pan;
 	freq = root.midicps;
 	fifth = (root + 7).midicps;
 	oct = (root + 12).midicps;
@@ -112,10 +132,12 @@ SynthDef(\piTextureDrone, {
 		SinOsc.ar(freq * (1 + LFNoise2.kr(0.03).range(0, density * 0.004)), 0, 0.12),
 		SinOsc.ar(fifth * (1 + LFNoise2.kr(0.02).range(0, density * 0.003)), 0, 0.08),
 		SinOsc.ar(oct, 0, 0.05),
-		LPF.ar(PinkNoise.ar(noise * 0.04), 800)
+		LPF.ar(PinkNoise.ar(noise * 0.04), 800),
+		SinOsc.ar(oct * 2, 0, shimmer * 0.03)
 	]);
-	sig = sig * LFNoise1.kr(0.02).range(0.4, 1.0);
-	Out.ar(out, Pan2.ar(sig, 0));
+	sig = sig * LFNoise1.kr(0.02).range(0.4, 1.0) * duck;
+	pan = SinOsc.kr(0.04).range(-0.35, 0.35);
+	Out.ar(out, Pan2.ar(sig, pan));
 	Out.ar(4, sig * rev * 0.6);
 }).add;
 
@@ -144,9 +166,6 @@ fork {
 	if(s.serverRunning.not, { s.boot; 0.5.wait });
 	s.sync;
 
-	delayBus = Bus.audio(s, 2);
-	reverbBus = Bus.audio(s, 2);
-
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 
@@ -156,13 +175,22 @@ fork {
 	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5]);
 
 	~voices = IdentityDictionary.new;
+	~noteActivity = 0;
+
+	~setDuck = {
+		var target = if(arpActive, 0.55, 1.0);
+		duckLevel = target;
+		if(textureSynth.notNil, { textureSynth.set(\duck, target) });
+	};
 
 	~playNote = { |note, vel=100|
 		var freq = note.midicps;
-		var amp = vel / 127.0 * 0.35 * masterVol;
+		var amp = vel.linlin(0, 127, 0.18, 0.42) * masterVol;
+		~noteActivity = (~noteActivity + 1).max(0);
+		if(textureSynth.notNil, { textureSynth.set(\duck, 0.42) });
 		if(~voices[note].notNil, { ~voices[note].free });
 		~voices[note] = Synth.before(limiterSynth, \piAmbientVoice, [
-			\freq, freq, \amp, amp, \gate, 1,
+			\freq, freq, \amp, amp, \gate, 1, \vel, vel,
 			\oscBlend, patchParams[\oscillator_blend] ? 0.5,
 			\subLevel, patchParams[\sub_level] ? 0.15,
 			\noiseLevel, patchParams[\noise_level] ? 0.05,
@@ -187,16 +215,24 @@ fork {
 			~voices[note].set(\gate, 0);
 			~voices.removeAt(note);
 		});
+		~noteActivity = (~noteActivity - 1).max(0);
+		if(~noteActivity <= 0, {
+			fork {
+				1.5.wait;
+				if(~noteActivity <= 0, { ~setDuck.() });
+			};
+		});
 	};
 
 	~allOff = {
 		~voices.do(_.set(\gate, 0));
 		~voices.clear;
+		~noteActivity = 0;
+		~setDuck.();
 	};
 
 	~panic = {
 		~allOff.();
-		if(textureSynth.notNil, { textureSynth.set(\noise, 0) });
 	};
 
 	OSCdef(\piNoteOn, { |msg|
@@ -213,9 +249,7 @@ fork {
 		if(key == \master_volume, {
 			masterVol = val;
 		}, {
-			if(val.isKindOf(String), {
-				val = val.asFloat;
-			});
+			if(val.isKindOf(String), { val = val.asFloat });
 			~setParam.(key, val);
 		});
 	}, \pi_synth_set);
@@ -228,24 +262,45 @@ fork {
 		~applyPatch.(morphTime);
 	}, \pi_synth_patch_loaded);
 
+	OSCdef(\piReseedTransition, { |msg|
+		var dur = msg[1] ? 2.0;
+		if(textureSynth.notNil, {
+			textureSynth.set(\rev, (patchParams[\reverb_mix] ? 0.45) + 0.15);
+			fork {
+				dur.wait;
+				textureSynth.set(\rev, patchParams[\reverb_mix] ? 0.45);
+			};
+		});
+	}, \pi_synth_reseed_transition);
+
 	OSCdef(\piReseed, { |msg|
-		"Reseed signal: %".format(msg[1]).postln;
+		"Reseed: %".format(msg[1]).postln;
 	}, \pi_synth_reseed);
+
+	OSCdef(\piTextureRoot, { |msg|
+		var n = msg[1].asInteger;
+		if(n >= 0, {
+			textureRoot = n;
+			if(textureSynth.notNil, { textureSynth.set(\root, n) });
+		});
+	}, \pi_synth_texture_root);
+
+	OSCdef(\piArpActive, { |msg|
+		arpActive = msg[1] > 0;
+		if(textureSynth.notNil, {
+			textureSynth.set(\shimmer, if(arpActive, 0.35, 0.0));
+		});
+		~setDuck.();
+	}, \pi_synth_arp_active);
+
+	OSCdef(\piHold, { |msg|
+		holdLatch = msg[1] > 0;
+	}, \pi_synth_hold);
 
 	OSCdef(\piEvolve, { |msg|
 		evolveEnabled = msg[1] > 0;
-		if(evolveEnabled, {
-			fork {
-				loop {
-					3.wait;
-					if(evolveEnabled, {
-						var k = [\lfo_depth, \filter_cutoff, \texture_density].choose;
-						var cur = patchParams[k] ? 0.5;
-						var delta = rrand(-0.03, 0.03);
-						~morphParam.(k, (cur + delta).clip(0.01, 1.0), 4);
-					});
-				};
-			};
+		if(evolveEnabled, { ~startEvolve.() }, {
+			if(evolveRoutine.notNil, { evolveRoutine.stop; evolveRoutine = nil });
 		});
 	}, \pi_synth_evolve);
 
