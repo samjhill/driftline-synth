@@ -1,0 +1,11 @@
+[Unit]
+Description=Pi Ambient Synth e-ink audio engine starting
+After=network-online.target
+Before=supercollider.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'B=/home/pi/pi-ambient-synth/scripts/boot_display.sh; test -x "$B" || B=/boot/firmware/pi-ambient-synth/scripts/boot_display.sh; test -x "$B" || B=/boot/pi-ambient-synth/scripts/boot_display.sh; exec "$B" audio "Audio engine" "SuperCollider" "starting"'
+
+[Install]
+WantedBy=multi-user.target

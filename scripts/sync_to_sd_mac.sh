@@ -86,7 +86,7 @@ if ! grep -q '^dtparam=spi=on' "$BOOT_VOL/config.txt" 2>/dev/null; then
   echo 'dtparam=spi=on' >> "$BOOT_VOL/config.txt"
 fi
 
-chmod +x "$DEST/scripts/pi-deploy-sync.sh" "$DEST/install.sh" 2>/dev/null || true
+chmod +x "$DEST/scripts/pi-deploy-sync.sh" "$DEST/scripts/boot_display.sh" "$DEST/install.sh" 2>/dev/null || true
 
 sync
 echo ""

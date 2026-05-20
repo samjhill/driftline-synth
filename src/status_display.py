@@ -10,6 +10,12 @@ from PIL import Image, ImageDraw, ImageFont
 
 # Visual phases (monochrome, high contrast for 2.13" panel)
 PHASE_LABELS = {
+    "boot": "BOOT",
+    "network": "NET",
+    "wifi": "WIFI",
+    "audio": "AUDIO",
+    "synth": "SYNTH",
+    "midi": "MIDI",
     "checking": "SYNC",
     "download": "PULL",
     "install": "INSTALL",
@@ -76,7 +82,7 @@ class StatusDisplay:
                 draw.rectangle((m, bar_y, m + fill_w, bar_y + 6), fill=0)
 
         # Corner ticks for "activity"
-        if phase in ("checking", "download", "install", "restart"):
+        if phase in ("boot", "network", "wifi", "audio", "synth", "midi", "checking", "download", "install", "restart"):
             cx = w - m - 8
             cy = m + 6
             draw.rectangle((cx, cy, cx + 6, cy + 6), outline=0, fill=0)

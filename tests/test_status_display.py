@@ -17,6 +17,12 @@ def test_render_status_image():
     assert img.mode == "1"
 
 
+def test_boot_phase_label():
+    config = load_config(Path(__file__).resolve().parent.parent / "config" / "default.yaml")
+    img = StatusDisplay(config).render("boot", "Booting", "Pi Ambient Synth", "power on")
+    assert img.mode == "1"
+
+
 def test_render_phases_distinct():
     config = load_config(Path(__file__).resolve().parent.parent / "config" / "default.yaml")
     r = StatusDisplay(config)

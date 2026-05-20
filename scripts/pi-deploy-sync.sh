@@ -251,6 +251,13 @@ do_deploy() {
   sudo touch "$LOG_FILE"
   sudo chown pi:pi "$LOG_FILE" 2>/dev/null || true
 
+  if [[ "$MODE" == "bootstrap" ]]; then
+    EINK_FORCE=1
+    eink_status boot "First boot" "Pi Ambient Synth" "initial setup"
+  else
+    eink_status boot "Starting" "Checking for updates" ""
+  fi
+
   if ! load_deploy_conf; then
     log "ERROR: No deploy.conf on boot, in $INSTALL_DIR, or $PERSIST_CONF"
     eink_status failed "No deploy config" "" "check boot SD"

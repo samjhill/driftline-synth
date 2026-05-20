@@ -1,20 +1,30 @@
 #cloud-config
-# Applied on first boot by Raspberry Pi OS cloud-init (local datasource).
-# Installs pi-ambient-synth from the boot partition, then enables auto-update timer.
+# First boot: e-ink boot progress, then full install from boot partition.
 
 package_update: false
 timezone: America/New_York
 
+packages:
+  - python3-pil
+  - python3-yaml
+
 runcmd:
   - mkdir -p /var/log /var/lib/pi-ambient-synth
   - |
+    set -e
     BOOT=""
     for d in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
-      test -f "$d/scripts/pi-deploy-sync.sh" && BOOT="$d" && break
+      if test -f "$d/scripts/pi-deploy-sync.sh"; then
+        BOOT="$d"
+        break
+      fi
     done
-    if test -n "$BOOT"; then
-      chmod +x "$BOOT/scripts/pi-deploy-sync.sh"
-      "$BOOT/scripts/pi-deploy-sync.sh" bootstrap
-    else
-      echo "pi-ambient-synth not found on boot partition" >> /var/log/pi-ambient-synth-deploy.log
+    if test -z "$BOOT"; then
+      echo "pi-ambient-synth not found on boot" >> /var/log/pi-ambient-synth-deploy.log
+      exit 1
     fi
+    chmod +x "$BOOT/scripts/boot_display.sh" "$BOOT/scripts/pi-deploy-sync.sh"
+    "$BOOT/scripts/boot_display.sh" boot "First boot" "Pi Ambient Synth" "cloud-init"
+    "$BOOT/scripts/boot_display.sh" network "Bringing up" "network" "WiFi / DHCP"
+    "$BOOT/scripts/pi-deploy-sync.sh" bootstrap
+    "$BOOT/scripts/boot_display.sh" synth "Almost ready" "starting services" ""

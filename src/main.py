@@ -63,6 +63,8 @@ class PiAmbientSynth:
         vol = self.config.get("audio", {}).get("default_volume", 0.65)
         self.osc.set_volume(vol)
         self.eink.init()
+        if self.config.get("eink", {}).get("enabled", True):
+            self.eink.show_status("synth", "Loading synth", "patch + MIDI", "")
         self._patch = self._resolve_patch()
         self.osc.send_patch(self._patch)
         self._update_display(self._patch)

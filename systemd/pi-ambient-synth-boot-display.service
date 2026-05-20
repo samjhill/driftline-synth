@@ -1,0 +1,12 @@
+[Unit]
+Description=Pi Ambient Synth e-ink early boot splash
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target pi-ambient-synth-deploy.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'B=/home/pi/pi-ambient-synth/scripts/boot_display.sh; if test ! -x "$B"; then B=/boot/firmware/pi-ambient-synth/scripts/boot_display.sh; fi; if test ! -x "$B"; then B=/boot/pi-ambient-synth/scripts/boot_display.sh; fi; exec "$B" boot "Booting" "Pi Ambient Synth" "power on"'
+
+[Install]
+WantedBy=multi-user.target

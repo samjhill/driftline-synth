@@ -28,7 +28,9 @@ tail -f /var/log/pi-ambient-synth-deploy.log
 journalctl -u pi-ambient-synth-deploy.service -f
 ```
 
-The **e-ink display** shows deploy phases: `SYNC` → `PULL` → `INSTALL` → `RESTART` → `READY`, then returns to the patch sigil.
+The **e-ink display** shows boot and deploy progress:
+
+`BOOT` (power on) → `NET` (first boot) → `SYNC` → `PULL` → `INSTALL` → `AUDIO` → `SYNTH` → patch sigil.
 
 ## First-time SD setup
 

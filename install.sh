@@ -27,6 +27,7 @@ else
   sudo apt-get update -qq
   sudo apt-get install -y \
     python3-venv python3-pip python3-dev \
+    python3-pil python3-yaml \
     supercollider \
     git libasound2-dev \
     curl \
@@ -56,8 +57,13 @@ sudo cp "$ROOT/systemd/supercollider.service" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth.service" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-deploy.service" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-deploy.timer" /etc/systemd/system/
+sudo cp "$ROOT/systemd/pi-ambient-synth-boot-display.service" /etc/systemd/system/
+sudo cp "$ROOT/systemd/pi-ambient-synth-audio-display.service" /etc/systemd/system/
+chmod +x "$ROOT/scripts/boot_display.sh"
 sudo systemctl daemon-reload
 sudo systemctl enable pi-ambient-synth-deploy.timer
+sudo systemctl enable pi-ambient-synth-boot-display.service
+sudo systemctl enable pi-ambient-synth-audio-display.service
 
 if $ENABLE_SERVICES; then
   echo "==> Enabling services..."
