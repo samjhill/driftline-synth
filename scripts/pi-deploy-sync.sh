@@ -10,8 +10,50 @@ MARKER_DIR="/var/lib/pi-ambient-synth"
 PERSIST_CONF="/etc/pi-ambient-synth/deploy.conf"
 LOG_FILE="/var/log/pi-ambient-synth-deploy.log"
 DEPLOY_CONF_NAME="deploy/deploy.conf"
+EINK_STATUS_FILE="$MARKER_DIR/last_eink_status"
 
 log() { echo "$(date -Iseconds) [$LOG_TAG] $*" | tee -a "$LOG_FILE"; }
+
+eink_status() {
+  local phase="$1" title="$2" subtitle="${3:-}" detail="${4:-}"
+  local key="${phase}|${title}|${subtitle}|${detail}"
+  local script py
+
+  mkdir -p "$MARKER_DIR"
+  if [[ "${EINK_FORCE:-0}" != "1" && -f "$EINK_STATUS_FILE" ]] && [[ "$(cat "$EINK_STATUS_FILE")" == "$key" ]]; then
+    return 0
+  fi
+  echo "$key" > "$EINK_STATUS_FILE"
+
+  script="$INSTALL_DIR/scripts/show_status.py"
+  if [[ ! -f "$script" ]]; then
+    local b
+    for b in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
+      if [[ -f "$b/scripts/show_status.py" ]]; then
+        script="$b/scripts/show_status.py"
+        break
+      fi
+    done
+  fi
+  [[ -f "$script" ]] || return 0
+
+  py="$INSTALL_DIR/.venv/bin/python"
+  [[ -x "$py" ]] || py="$(command -v python3 || echo python3)"
+
+  sudo -u pi env PYTHONPATH="$INSTALL_DIR/src" HOME=/home/pi \
+    "$py" "$script" "$phase" "$title" "$subtitle" "$detail" 2>/dev/null \
+    || true
+}
+
+eink_restore_patch() {
+  local script py
+  script="$INSTALL_DIR/scripts/show_status.py"
+  [[ -f "$script" ]] || return 0
+  py="$INSTALL_DIR/.venv/bin/python"
+  [[ -x "$py" ]] || py="$(command -v python3)"
+  sudo -u pi "$py" "$script" --restore-patch 2>/dev/null || true
+  rm -f "$EINK_STATUS_FILE"
+}
 
 find_boot_tree() {
   for base in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
@@ -201,21 +243,31 @@ resolve_target_sha() {
 
 do_deploy() {
   local target_sha current_sha short_sha
+  local repo_label="${GITHUB_REPO:-pi-ambient-synth}"
+  local branch_label="${GITHUB_BRANCH:-main}"
 
   ensure_pi_user
-  sudo mkdir -p "$(dirname "$LOG_FILE")" /etc/pi-ambient-synth
+  sudo mkdir -p "$(dirname "$LOG_FILE")" /etc/pi-ambient-synth "$MARKER_DIR"
   sudo touch "$LOG_FILE"
   sudo chown pi:pi "$LOG_FILE" 2>/dev/null || true
 
   if ! load_deploy_conf; then
     log "ERROR: No deploy.conf on boot, in $INSTALL_DIR, or $PERSIST_CONF"
+    eink_status failed "No deploy config" "" "check boot SD"
     return 1
   fi
 
+  repo_label="${GITHUB_REPO:-$repo_label}"
+  branch_label="${GITHUB_BRANCH:-main}"
   persist_deploy_conf
 
+  eink_status checking "Checking GitHub" "$repo_label" "$branch_label"
+
   current_sha="$(installed_sha)"
-  target_sha="$(resolve_target_sha)" || return 1
+  if ! target_sha="$(resolve_target_sha)"; then
+    eink_status failed "GitHub unreachable" "$repo_label" "network?"
+    return 1
+  fi
   short_sha="${target_sha:0:7}"
 
   log "Mode=$MODE source=${DEPLOY_SOURCE:-github} auto_pull=${AUTO_PULL:-0} remote=$short_sha installed=${current_sha:0:7}"
@@ -225,32 +277,53 @@ do_deploy() {
     return 0
   fi
 
+  eink_status download "Pulling update" "$short_sha" "$repo_label"
+
   case "${DEPLOY_SOURCE:-github}" in
     github)
       if [[ -z "${GITHUB_REPO:-}" ]]; then
         log "ERROR: GITHUB_REPO required"
+        eink_status failed "Missing repo" "" "GITHUB_REPO"
         return 1
       fi
-      fetch_github "$GITHUB_REPO" "$target_sha"
+      if ! fetch_github "$GITHUB_REPO" "$target_sha"; then
+        eink_status failed "Download failed" "$short_sha" "$repo_label"
+        return 1
+      fi
       ;;
     boot)
       if [[ -z "${BOOT_TREE:-}" ]]; then
         log "ERROR: boot source but no boot tree"
+        eink_status failed "No boot copy" "" "sync SD on Mac"
         return 1
       fi
+      eink_status download "Syncing boot" "$short_sha" "SD card"
       rsync_from_boot "$BOOT_TREE"
       ;;
     *)
       log "ERROR: unknown DEPLOY_SOURCE=${DEPLOY_SOURCE}"
+      eink_status failed "Bad config" "${DEPLOY_SOURCE}" ""
       return 1
       ;;
   esac
 
-  run_install
+  eink_status install "Installing" "$short_sha" "venv + packages"
+  if ! run_install; then
+    eink_status failed "Install failed" "$short_sha" "install.sh"
+    return 1
+  fi
+
   install_systemd_units
   write_installed_sha "$target_sha"
+
+  eink_status restart "Restarting" "audio engine" "supercollider"
   restart_services
+
+  eink_status ready "Update complete" "$short_sha" "$repo_label"
   log "Deploy complete: $short_sha (${GITHUB_REPO:-boot})"
+
+  sleep 2
+  eink_restore_patch
 }
 
 case "$MODE" in

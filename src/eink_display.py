@@ -95,6 +95,21 @@ class EInkDisplay:
         self.show_image(image)
         logger.info("Display updated: %s", patch.summary())
 
+    def show_status(
+        self,
+        phase: str,
+        title: str,
+        subtitle: str = "",
+        detail: str = "",
+    ) -> None:
+        from status_display import StatusDisplay
+
+        renderer = StatusDisplay(
+            {"eink": {"width": self.width, "height": self.height}}
+        )
+        self.show_image(renderer.render(phase, title, subtitle, detail))
+        logger.info("Status display: %s — %s", phase, title)
+
     def clear(self) -> None:
         if self.available:
             self._epd.Clear(0xFF)
