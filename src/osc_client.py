@@ -82,6 +82,15 @@ class OscClient:
     def hold_latch(self, on: bool) -> None:
         self._client.send_message("/pi_synth/hold", [1 if on else 0])
 
+    def weather(self, amount: float) -> None:
+        self._client.send_message("/pi_synth/weather", [max(0.0, min(1.0, amount))])
+
+    def companion(self, enabled: bool) -> None:
+        self._client.send_message("/pi_synth/companion", [1 if enabled else 0])
+
+    def panic_bloom(self) -> None:
+        self._client.send_message("/pi_synth/panic_bloom", [])
+
     def evolve(self, enabled: bool) -> None:
         self._client.send_message("/pi_synth/evolve", [1 if enabled else 0])
 

@@ -42,6 +42,9 @@ class MidiController:
         self._thread: threading.Thread | None = None
         self._running = False
         self._shift_held = False
+        self._last_stop_at: float = 0.0
+        self._recall_window = midi.get("favorite_recall_window_ms", 600) / 1000.0
+        self._weather_cc = midi.get("weather_cc", 1)
 
         self.on_note_on: Callable[[int, int, int], None] | None = None
         self.on_note_off: Callable[[int, int, int], None] | None = None
@@ -51,6 +54,8 @@ class MidiController:
         self.on_freeze_requested: Callable[[], None] | None = None
         self.on_evolve_toggle_requested: Callable[[], None] | None = None
         self.on_hold_change: Callable[[bool], None] | None = None
+        self.on_recall_favorite: Callable[[], None] | None = None
+        self.on_weather_change: Callable[[float], None] | None = None
 
     @staticmethod
     def list_inputs() -> list[str]:
@@ -121,10 +126,18 @@ class MidiController:
                     self.on_hold_change(msg.value >= 64)
             if msg.control in TRANSPORT_CC:
                 event = TRANSPORT_CC[msg.control]
+                if event == "stop":
+                    now = time.time()
+                    if now - self._last_stop_at < self._recall_window and self.on_recall_favorite:
+                        logger.info("Double STOP → recall favorite")
+                        self.on_recall_favorite()
+                    self._last_stop_at = now
                 if self._shift_held:
                     self._handle_shift_transport(event)
                 elif self.on_transport:
                     self.on_transport(event)
+            if msg.control == self._weather_cc and self.on_weather_change:
+                self.on_weather_change(msg.value / 127.0)
             if self.on_cc:
                 self.on_cc(msg.control, msg.value, ch)
         elif msg.type == "sysex":

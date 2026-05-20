@@ -84,6 +84,8 @@ class PiAmbientSynth:
         self.midi.on_reseed_requested = self.reseed
         self.midi.on_freeze_requested = self.freeze
         self.midi.on_evolve_toggle_requested = self.toggle_evolve
+        self.midi.on_recall_favorite = self.recall_favorite
+        self.midi.on_weather_change = self._on_weather
 
         if self.debug_midi:
             orig_cc = self.midi.on_cc
@@ -168,11 +170,29 @@ class PiAmbientSynth:
         self.state_store.add_favorite(self._patch)
         self._update_display(self._patch, favorite=True)
 
+    def recall_favorite(self) -> None:
+        fav = self.state_store.load_last_favorite()
+        if not fav:
+            logger.info("No favorite to recall")
+            return
+        self._patch = fav
+        self.state_store.save_current(self._patch)
+        self.osc.send_patch(self._patch, morph_seconds=4.0)
+        self._update_display(self._patch, favorite=True)
+        logger.info("Recalled favorite: %s", self._patch.summary())
+
+    def _on_weather(self, amount: float) -> None:
+        self.osc.weather(amount)
+        if self.config.get("eink", {}).get("enabled", True):
+            label = "clear" if amount > 0.66 else ("mist" if amount > 0.33 else "fog")
+            self.eink.show_status("idle", "Weather", label, f"{int(amount * 100)}%")
+
     def toggle_evolve(self) -> None:
         if not self._patch:
             return
         self._patch.evolve_enabled = not self._patch.evolve_enabled
         self.osc.evolve(self._patch.evolve_enabled)
+        self.osc.companion(self._patch.evolve_enabled)
         self.state_store.save_current(self._patch)
         self._update_display(self._patch)
         logger.info("Evolve mode: %s", self._patch.evolve_enabled)
@@ -180,6 +200,7 @@ class PiAmbientSynth:
     def panic(self) -> None:
         self.osc.panic()
         self.osc.all_notes_off()
+        self.osc.panic_bloom()
 
     def shutdown(self) -> None:
         self._running = False
