@@ -61,7 +61,19 @@ class StateStore:
         favorites = self.load_favorites()
         if any(f.seed == patch.seed for f in favorites):
             logger.info("Patch already in favorites: seed=%s", patch.seed)
-            return
-        favorites.append(patch)
-        self._atomic_write(self.favorites_path, [p.to_dict() for p in favorites])
-        logger.info("Added favorite: %s", patch.summary())
+        else:
+            favorites.append(patch)
+            self._atomic_write(self.favorites_path, [p.to_dict() for p in favorites])
+            logger.info("Added favorite: %s", patch.summary())
+        self._atomic_write(self.favorites_path.parent / "last_favorite.json", patch.to_dict())
+
+    def load_last_favorite(self) -> Patch | None:
+        path = self.favorites_path.parent / "last_favorite.json"
+        if not path.exists():
+            favs = self.load_favorites()
+            return favs[-1] if favs else None
+        try:
+            with open(path) as f:
+                return Patch.from_dict(json.load(f))
+        except (json.JSONDecodeError, TypeError):
+            return None

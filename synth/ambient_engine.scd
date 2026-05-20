@@ -1,8 +1,8 @@
 // Pi Ambient Synth — SuperCollider headless engine (phase 1 fun)
 (
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
-var synthGroup, textureSynth, limiterSynth;
-var textureRoot, holdLatch, arpActive, duckLevel;
+var synthGroup, textureSynth, limiterSynth, companionSynth;
+var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -12,6 +12,8 @@ textureRoot = 48;
 holdLatch = false;
 arpActive = false;
 duckLevel = 1.0;
+weatherAmt = 0.5;
+companionOn = false;
 
 patchParams[\filter_cutoff] = 1400.0;
 patchParams[\filter_resonance] = 0.2;
@@ -115,7 +117,7 @@ SynthDef(\piAmbientVoice, {
 	sig = LPF.ar(sig, velCut * bright.linlin(0.2, 0.95, 0.6, 1.2));
 	sig = RLPF.ar(sig, velCut, res);
 	env = EnvGen.kr(Env.adsr(atk, dec, sus, rel), gate, doneAction: 2);
-	pan = SinOsc.kr(0.07 + (width * 0.03)).range(width.neg, width);
+	pan = SinOsc.kr(0.05 + (width * 0.08)).range(width.neg * 1.2, width * 1.2);
 	sig = Pan2.ar(sig * env * amp, pan);
 	Out.ar(out, sig);
 	Out.ar(6, sig * delayMix);
@@ -136,7 +138,7 @@ SynthDef(\piTextureDrone, {
 		SinOsc.ar(oct * 2, 0, shimmer * 0.03)
 	]);
 	sig = sig * LFNoise1.kr(0.02).range(0.4, 1.0) * duck;
-	pan = SinOsc.kr(0.04).range(-0.35, 0.35);
+	pan = SinOsc.kr(0.03 + (SinOsc.kr(0.01) * 0.02)).range(-0.55, 0.55);
 	Out.ar(out, Pan2.ar(sig, pan));
 	Out.ar(4, sig * rev * 0.6);
 }).add;
@@ -151,6 +153,18 @@ SynthDef(\piReverbFx, { |inBus=4, out=0, mix=0.45, room=0.8|
 	var sig = In.ar(inBus, 2);
 	sig = FreeVerb.ar(sig, mix, room, 0.85);
 	ReplaceOut.ar(out, LeakDC.ar(sig * 0.95));
+}).add;
+
+SynthDef(\piCompanion, {
+	|root=48, gate=1, density=0.35|
+	var scale, deg, freq, sig, env, interval;
+	scale = [0, 2, 3, 5, 7, 9, 10];
+	interval = TWhiteNoise.kr(0.08).range(3.5, 14.0);
+	deg = Latch.kr(IRand.kr(0, scale.size - 1), Dust.kr(interval));
+	freq = (root + scale[deg]).midicps;
+	sig = SinOsc.ar(freq) * 0.06;
+	env = EnvGen.kr(Env.asr(1.5, 0, 4.0), gate, doneAction: 2);
+	Out.ar(4, sig * env * density);
 }).add;
 
 SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
@@ -235,6 +249,19 @@ fork {
 		~allOff.();
 	};
 
+	~panicBloom = {
+		fork {
+			2.5.wait;
+			if(textureSynth.notNil, {
+				textureSynth.set(\density, (patchParams[\texture_density] ? 0.5) * 0.7);
+			});
+			masterVol = (masterVol * 0.35).max(0.12);
+			3.wait;
+			~applyPatch.(5);
+			masterVol = 0.65;
+		};
+	};
+
 	OSCdef(\piNoteOn, { |msg|
 		~playNote.(msg[1].asInteger, msg[2] ? 100);
 	}, \pi_synth_note_on);
@@ -304,8 +331,32 @@ fork {
 		});
 	}, \pi_synth_evolve);
 
+	OSCdef(\piWeather, { |msg|
+		var w = msg[1].clip(0, 1);
+		weatherAmt = w;
+		~morphParam.(\filter_cutoff, 900 + (2800 * (1 - w)), 2);
+		~morphParam.(\reverb_size, 0.55 + (0.4 * w), 3);
+		~morphParam.(\noise_level, 0.02 + (0.14 * (1 - w)), 2);
+	}, \pi_synth_weather);
+
+	OSCdef(\piCompanion, { |msg|
+		companionOn = msg[1] > 0;
+		if(companionOn and { companionSynth.isNil }, {
+			companionSynth = Synth.tail(synthGroup, \piCompanion, [
+				\root, textureRoot,
+				\density, (patchParams[\texture_density] ? 0.5) * 0.4
+			]);
+		}, {
+			if(companionSynth.notNil, {
+				companionSynth.set(\gate, 0);
+				companionSynth = nil;
+			});
+		});
+	}, \pi_synth_companion);
+
 	OSCdef(\piAllOff, { ~allOff.() }, \pi_synth_all_notes_off);
 	OSCdef(\piPanic, { ~panic.() }, \pi_synth_panic);
+	OSCdef(\piPanicBloom, { ~panicBloom.() }, \pi_synth_panic_bloom);
 
 	NetAddr.localAddr.port = port;
 	"Pi Ambient Synth listening on OSC port %".format(port).postln;

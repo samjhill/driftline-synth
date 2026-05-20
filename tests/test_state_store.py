@@ -61,6 +61,13 @@ def test_favorites_append(store, sample_patch):
     assert len(favs) == 1
 
 
+def test_recall_last_favorite(store, sample_patch):
+    store.add_favorite(sample_patch)
+    recalled = store.load_last_favorite()
+    assert recalled is not None
+    assert recalled.seed == 99
+
+
 def test_atomic_write_not_corrupt(store, sample_patch, tmp_path):
     store.save_current(sample_patch)
     with open(store.state_path) as f:
