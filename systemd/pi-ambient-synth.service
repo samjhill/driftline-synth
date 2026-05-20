@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi Ambient Synth Controller
+After=supercollider.service
+Requires=supercollider.service
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/src/main.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

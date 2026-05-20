@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+state/
+deploy/deploy.conf
+deploy/secrets/*
+!deploy/secrets/.gitkeep
+# Never commit WiFi / credentials (use deploy/secrets/*.local on Mac only)
+network-config
+wpa_supplicant.conf
+**/network-config.local
+**/wpa_supplicant.conf.local
+*.png
+out/
+.DS_Store
+.install_deps_stamp

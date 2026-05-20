@@ -1,0 +1,14 @@
+#cloud-config
+# Copy to deploy/secrets/network-config.local (gitignored) and customize.
+# sync_to_sd_mac.sh copies the .local file to the SD boot partition.
+
+network:
+  version: 2
+  wifis:
+    wlan0:
+      dhcp4: true
+      optional: false
+      access-points:
+        YOUR_SSID:
+          password: "YOUR_PASSWORD"
+      regulatory-domain: US

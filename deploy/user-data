@@ -1,0 +1,20 @@
+#cloud-config
+# Applied on first boot by Raspberry Pi OS cloud-init (local datasource).
+# Installs pi-ambient-synth from the boot partition, then enables auto-update timer.
+
+package_update: false
+timezone: America/New_York
+
+runcmd:
+  - mkdir -p /var/log /var/lib/pi-ambient-synth
+  - |
+    BOOT=""
+    for d in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
+      test -f "$d/scripts/pi-deploy-sync.sh" && BOOT="$d" && break
+    done
+    if test -n "$BOOT"; then
+      chmod +x "$BOOT/scripts/pi-deploy-sync.sh"
+      "$BOOT/scripts/pi-deploy-sync.sh" bootstrap
+    else
+      echo "pi-ambient-synth not found on boot partition" >> /var/log/pi-ambient-synth-deploy.log
+    fi

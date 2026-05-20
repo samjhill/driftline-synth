@@ -1,0 +1,16 @@
+# Copy to deploy.conf (or edit on SD boot partition at pi-ambient-synth/deploy/deploy.conf)
+#
+# DEPLOY_SOURCE:
+#   boot    — sync from /boot/firmware/pi-ambient-synth (Mac rsync iteration)
+#   github  — fetch tarball from GitHub at DEPLOY_SHA
+#
+# DEPLOY_SHA: commit to install (required for github; auto-set by sync_to_sd_mac.sh)
+# GITHUB_REPO: owner/repo (e.g. samhilll/driftline-synth)
+# GITHUB_BRANCH: branch name (used for display only when SHA set)
+# ENABLE_SERVICES: 1 to enable systemd units after install
+
+DEPLOY_SOURCE=boot
+DEPLOY_SHA=local-dev
+GITHUB_REPO=samjhill/driftline-synth
+GITHUB_BRANCH=main
+ENABLE_SERVICES=1

@@ -1,0 +1,15 @@
+[Unit]
+Description=SuperCollider Ambient Synth Engine
+After=sound.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+ExecStart=/usr/bin/sclang /home/pi/pi-ambient-synth/synth/ambient_engine.scd
+Restart=always
+RestartSec=2
+Environment=SC_JACK_DEFAULT_INPUTS=
+Environment=SC_JACK_DEFAULT_OUTPUTS=
+
+[Install]
+WantedBy=multi-user.target

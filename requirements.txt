@@ -1,0 +1,9 @@
+mido
+python-rtmidi
+python-osc
+PyYAML
+Pillow
+numpy
+spidev
+RPi.GPIO
+gpiozero

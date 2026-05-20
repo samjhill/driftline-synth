@@ -1,0 +1,13 @@
+[Unit]
+Description=Pi Ambient Synth deploy sync (boot partition / GitHub SHA)
+After=network-online.target local-fs.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh sync
+RemainAfterExit=yes
+# Fallback if not yet installed to home
+ExecStartPre=/bin/bash -c 'test -x /home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh || (BASE=$(test -d /boot/firmware/pi-ambient-synth && echo /boot/firmware/pi-ambient-synth || echo /boot/pi-ambient-synth); mkdir -p /home/pi/pi-ambient-synth; rsync -a "$BASE/scripts/pi-deploy-sync.sh" /home/pi/pi-ambient-synth/scripts/; chmod +x /home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh)'
+
+[Install]
+WantedBy=multi-user.target

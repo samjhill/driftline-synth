@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Pi Ambient Synth — orchestration layer."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import random
+import signal
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+
+from config_loader import load_config
+from eink_display import EInkDisplay
+from logging_setup import setup_logging
+from midi_controller import MidiController
+from osc_client import OscClient
+from patch_generator import PatchGenerator
+from patch_model import Patch
+from state_store import StateStore
+from visual_generator import VisualGenerator
+
+logger = logging.getLogger("pi_ambient_synth")
+
+
+class PiAmbientSynth:
+    def __init__(self, config: dict, no_eink: bool = False, debug_midi: bool = False):
+        self.config = config
+        self.debug_midi = debug_midi
+        if no_eink:
+            self.config.setdefault("eink", {})["enabled"] = False
+
+        app = config.get("app", {})
+        self.state_store = StateStore(
+            Path(app.get("state_path", "./state/current_patch.json")),
+            Path(app.get("favorites_path", "./state/favorites.json")),
+        )
+        self.patch_gen = PatchGenerator(config)
+        self.osc = OscClient(config)
+        self.visual = VisualGenerator(config)
+        self.eink = EInkDisplay(config)
+        self.midi = MidiController(config)
+        self._patch: Patch | None = None
+        self._running = True
+
+    def _resolve_patch(self) -> Patch:
+        saved = self.state_store.load_current()
+        patch_cfg = self.config.get("patch", {})
+        seed = patch_cfg.get("seed")
+        evolve = patch_cfg.get("evolve_enabled", False)
+        if saved:
+            logger.info("Loaded saved patch: %s", saved.summary())
+            return saved
+        if seed is not None:
+            return self.patch_gen.generate(seed=seed, evolve_enabled=evolve)
+        return self.patch_gen.generate(evolve_enabled=evolve)
+
+    def startup(self) -> None:
+        vol = self.config.get("audio", {}).get("default_volume", 0.65)
+        self.osc.set_volume(vol)
+        self.eink.init()
+        self._patch = self._resolve_patch()
+        self.osc.send_patch(self._patch)
+        self._update_display(self._patch)
+        self._wire_midi()
+        if not self.midi.open():
+            logger.warning("MIDI unavailable — OSC/visual still active")
+        else:
+            self.midi.start()
+
+    def _wire_midi(self) -> None:
+        self.midi.on_note_on = self._on_note_on
+        self.midi.on_note_off = self._on_note_off
+        self.midi.on_reseed_requested = self.reseed
+        self.midi.on_freeze_requested = self.freeze
+        self.midi.on_evolve_toggle_requested = self.toggle_evolve
+
+        if self.debug_midi:
+            orig_cc = self.midi.on_cc
+
+            def debug_cc(c, v, ch):
+                logger.info("MIDI CC ch=%s cc=%s val=%s", ch, c, v)
+                if orig_cc:
+                    orig_cc(c, v, ch)
+
+            self.midi.on_cc = debug_cc
+
+            def debug_note_on(n, v, ch):
+                logger.info("MIDI note_on ch=%s note=%s vel=%s", ch, n, v)
+                self._on_note_on(n, v, ch)
+
+            def debug_note_off(n, v, ch):
+                logger.info("MIDI note_off ch=%s note=%s", ch, n)
+                self._on_note_off(n, v, ch)
+
+            self.midi.on_note_on = debug_note_on
+            self.midi.on_note_off = debug_note_off
+
+    def _on_note_on(self, note: int, velocity: int, channel: int) -> None:
+        self.osc.note_on(note, velocity)
+
+    def _on_note_off(self, note: int, velocity: int, channel: int) -> None:
+        self.osc.note_off(note, velocity)
+
+    def _update_display(self, patch: Patch, favorite: bool = False) -> None:
+        img = self.visual.render_patch(patch)
+        if favorite:
+            from PIL import ImageDraw
+
+            draw = ImageDraw.Draw(img)
+            draw.text((img.width - 14, img.height - 12), "*", fill=0)
+        if self.config.get("eink", {}).get("update_on_reseed", True):
+            self.eink.show_patch(patch, img)
+
+    def reseed(self) -> None:
+        seed = random.randint(0, 2**31 - 1)
+        evolve = self._patch.evolve_enabled if self._patch else False
+        if self._patch:
+            self._patch = self.patch_gen.morph_from(self._patch, seed, evolve)
+        else:
+            self._patch = self.patch_gen.generate(seed=seed, evolve_enabled=evolve)
+        self.state_store.save_current(self._patch)
+        self.osc.reseed(seed)
+        self.osc.send_patch(self._patch)
+        self._update_display(self._patch)
+        logger.info("Reseeded: %s", self._patch.summary())
+
+    def freeze(self) -> None:
+        if not self._patch:
+            return
+        self.state_store.add_favorite(self._patch)
+        self._update_display(self._patch, favorite=True)
+
+    def toggle_evolve(self) -> None:
+        if not self._patch:
+            return
+        self._patch.evolve_enabled = not self._patch.evolve_enabled
+        self.osc.evolve(self._patch.evolve_enabled)
+        self.state_store.save_current(self._patch)
+        self._update_display(self._patch)
+        logger.info("Evolve mode: %s", self._patch.evolve_enabled)
+
+    def panic(self) -> None:
+        self.osc.panic()
+        self.osc.all_notes_off()
+
+    def shutdown(self) -> None:
+        self._running = False
+        self.midi.stop()
+        if self.config.get("eink", {}).get("clear_on_shutdown", False):
+            self.eink.clear()
+        else:
+            self.eink.sleep()
+
+    def run(self) -> None:
+        self.startup()
+        logger.info("Pi Ambient Synth running — Ctrl+C to exit")
+        try:
+            while self._running:
+                time.sleep(0.25)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.shutdown()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Pi Ambient Synth")
+    parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument("--debug-midi", action="store_true")
+    parser.add_argument("--no-eink", action="store_true")
+    parser.add_argument("--generate-visual", type=Path, metavar="PATH")
+    parser.add_argument("--panic", action="store_true")
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+    setup_logging(config.get("app", {}).get("log_level", "INFO"))
+
+    if args.generate_visual:
+        gen = PatchGenerator(config)
+        patch = gen.generate()
+        vis = VisualGenerator(config)
+        img = vis.render_patch(patch)
+        args.generate_visual.parent.mkdir(parents=True, exist_ok=True)
+        img.save(args.generate_visual)
+        logger.info("Saved visual for %s → %s", patch.summary(), args.generate_visual)
+        return 0
+
+    if args.panic:
+        OscClient(config).panic()
+        return 0
+
+    app = PiAmbientSynth(config, no_eink=args.no_eink, debug_midi=args.debug_midi)
+
+    def handle_sig(_sig, _frame):
+        app.shutdown()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, handle_sig)
+    signal.signal(signal.SIGTERM, handle_sig)
+    app.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

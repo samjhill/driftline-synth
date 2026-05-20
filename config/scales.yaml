@@ -1,0 +1,17 @@
+ambient_modal:
+  - name: "Dorian"
+    intervals: [0, 2, 3, 5, 7, 9, 10]
+  - name: "Aeolian"
+    intervals: [0, 2, 3, 5, 7, 8, 10]
+  - name: "Minor Pentatonic"
+    intervals: [0, 3, 5, 7, 10]
+  - name: "Major Pentatonic"
+    intervals: [0, 2, 4, 7, 9]
+  - name: "Suspended"
+    intervals: [0, 2, 5, 7, 10]
+  - name: "Hirajoshi"
+    intervals: [0, 2, 3, 7, 8]
+  - name: "In Sen"
+    intervals: [0, 1, 5, 7, 10]
+  - name: "Lydian"
+    intervals: [0, 2, 4, 6, 7, 9, 11]
