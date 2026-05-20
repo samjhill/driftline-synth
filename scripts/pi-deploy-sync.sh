@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sync pi-ambient-synth from boot partition or GitHub, run install when SHA changes.
+# Deploy pi-ambient-synth from GitHub (auto-pull) or boot partition.
 # Usage: pi-deploy-sync.sh [bootstrap|sync|check]
 set -euo pipefail
 
@@ -7,6 +7,7 @@ MODE="${1:-sync}"
 LOG_TAG="pi-deploy-sync"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 MARKER_DIR="/var/lib/pi-ambient-synth"
+PERSIST_CONF="/etc/pi-ambient-synth/deploy.conf"
 LOG_FILE="/var/log/pi-ambient-synth-deploy.log"
 DEPLOY_CONF_NAME="deploy/deploy.conf"
 
@@ -23,10 +24,36 @@ find_boot_tree() {
 }
 
 load_deploy_conf() {
-  local base="$1"
-  # shellcheck disable=SC1090
-  source "$base/$DEPLOY_CONF_NAME"
-  BOOT_TREE="$base"
+  BOOT_TREE=""
+  if [[ -f "$PERSIST_CONF" ]]; then
+    # shellcheck disable=SC1090
+    source "$PERSIST_CONF"
+    log "Loaded config: $PERSIST_CONF"
+  fi
+  local boot_base
+  if boot_base="$(find_boot_tree)"; then
+    # shellcheck disable=SC1090
+    source "$boot_base/$DEPLOY_CONF_NAME"
+    BOOT_TREE="$boot_base"
+    log "Loaded config: $boot_base/$DEPLOY_CONF_NAME"
+  elif [[ -f "$INSTALL_DIR/$DEPLOY_CONF_NAME" ]]; then
+    # shellcheck disable=SC1090
+    source "$INSTALL_DIR/$DEPLOY_CONF_NAME"
+    log "Loaded config: $INSTALL_DIR/$DEPLOY_CONF_NAME"
+  elif [[ ! -f "$PERSIST_CONF" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+persist_deploy_conf() {
+  sudo mkdir -p /etc/pi-ambient-synth
+  if [[ -n "${BOOT_TREE:-}" && -f "$BOOT_TREE/$DEPLOY_CONF_NAME" ]]; then
+    sudo cp "$BOOT_TREE/$DEPLOY_CONF_NAME" "$PERSIST_CONF"
+  elif [[ -f "$INSTALL_DIR/$DEPLOY_CONF_NAME" ]]; then
+    sudo cp "$INSTALL_DIR/$DEPLOY_CONF_NAME" "$PERSIST_CONF"
+  fi
+  sudo chmod 644 "$PERSIST_CONF"
 }
 
 installed_sha() {
@@ -47,6 +74,30 @@ ensure_pi_user() {
   fi
   mkdir -p "$INSTALL_DIR"
   chown -R pi:pi /home/pi 2>/dev/null || true
+}
+
+github_curl() {
+  local url="$1"
+  local token="${GITHUB_TOKEN:-}"
+  if [[ -f /boot/firmware/pi-ambient-synth/deploy/secrets/github_token ]]; then
+    token="$(cat /boot/firmware/pi-ambient-synth/deploy/secrets/github_token)"
+  elif [[ -f "$INSTALL_DIR/deploy/secrets/github_token" ]]; then
+    token="$(cat "$INSTALL_DIR/deploy/secrets/github_token")"
+  fi
+  if [[ -n "$token" ]]; then
+    curl -fsSL -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" "$url"
+  else
+    curl -fsSL -H "Accept: application/vnd.github+json" "$url"
+  fi
+}
+
+resolve_github_sha() {
+  local repo="$1" branch="$2"
+  local json sha
+  json="$(github_curl "https://api.github.com/repos/${repo}/commits/${branch}")" || return 1
+  sha="$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])" 2>/dev/null || true)"
+  [[ -n "$sha" ]] || return 1
+  echo "$sha"
 }
 
 rsync_from_boot() {
@@ -109,13 +160,14 @@ install_systemd_units() {
   fi
 }
 
-restart_app_if_running() {
-  if systemctl is-enabled pi-ambient-synth.service &>/dev/null; then
-    log "Restarting synth services"
-    sudo systemctl restart supercollider.service 2>/dev/null || true
-    sleep 2
-    sudo systemctl restart pi-ambient-synth.service 2>/dev/null || true
+restart_services() {
+  if [[ "${ENABLE_SERVICES:-0}" != "1" ]]; then
+    return 0
   fi
+  log "Restarting synth services"
+  sudo systemctl restart supercollider.service 2>/dev/null || sudo systemctl start supercollider.service 2>/dev/null || true
+  sleep 2
+  sudo systemctl restart pi-ambient-synth.service 2>/dev/null || sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
 }
 
 wait_for_network() {
@@ -129,54 +181,76 @@ wait_for_network() {
   return 1
 }
 
+resolve_target_sha() {
+  local configured="${DEPLOY_SHA:-}"
+  if [[ "${AUTO_PULL:-0}" == "1" ]] || [[ "$configured" == "latest" ]] || [[ -z "$configured" ]]; then
+    if [[ "${DEPLOY_SOURCE:-github}" != "github" ]]; then
+      echo "$configured"
+      return 0
+    fi
+    if [[ -z "${GITHUB_REPO:-}" ]]; then
+      log "ERROR: AUTO_PULL requires GITHUB_REPO"
+      return 1
+    fi
+    wait_for_network || log "WARN: network not ready"
+    resolve_github_sha "${GITHUB_REPO}" "${GITHUB_BRANCH:-main}"
+    return 0
+  fi
+  echo "$configured"
+}
+
 do_deploy() {
-  local target_sha current_sha boot_base
+  local target_sha current_sha short_sha
 
   ensure_pi_user
-  sudo mkdir -p "$(dirname "$LOG_FILE")"
+  sudo mkdir -p "$(dirname "$LOG_FILE")" /etc/pi-ambient-synth
   sudo touch "$LOG_FILE"
   sudo chown pi:pi "$LOG_FILE" 2>/dev/null || true
 
-  if ! boot_base="$(find_boot_tree)"; then
-    log "ERROR: No boot tree with $DEPLOY_CONF_NAME found"
+  if ! load_deploy_conf; then
+    log "ERROR: No deploy.conf on boot, in $INSTALL_DIR, or $PERSIST_CONF"
     return 1
   fi
 
-  load_deploy_conf "$boot_base"
-  target_sha="${DEPLOY_SHA:-unknown}"
+  persist_deploy_conf
+
   current_sha="$(installed_sha)"
+  target_sha="$(resolve_target_sha)" || return 1
+  short_sha="${target_sha:0:7}"
 
-  log "Mode=$MODE source=${DEPLOY_SOURCE:-boot} target=$target_sha installed=$current_sha"
+  log "Mode=$MODE source=${DEPLOY_SOURCE:-github} auto_pull=${AUTO_PULL:-0} remote=$short_sha installed=${current_sha:0:7}"
 
-  if [[ "$target_sha" == "$current_sha" && "$MODE" == "check" ]]; then
-    log "Already up to date"
+  if [[ "$target_sha" == "$current_sha" ]]; then
+    log "Already up to date ($short_sha)"
     return 0
   fi
 
-  if [[ "$target_sha" == "$current_sha" && "$MODE" != "bootstrap" ]]; then
-    log "SHA unchanged — skip"
-    return 0
-  fi
-
-  case "${DEPLOY_SOURCE:-boot}" in
+  case "${DEPLOY_SOURCE:-github}" in
     github)
       if [[ -z "${GITHUB_REPO:-}" ]]; then
-        log "ERROR: GITHUB_REPO required for github source"
+        log "ERROR: GITHUB_REPO required"
         return 1
       fi
-      wait_for_network || log "WARN: network slow; trying GitHub anyway"
       fetch_github "$GITHUB_REPO" "$target_sha"
       ;;
-    boot|*)
-      rsync_from_boot "$boot_base"
+    boot)
+      if [[ -z "${BOOT_TREE:-}" ]]; then
+        log "ERROR: boot source but no boot tree"
+        return 1
+      fi
+      rsync_from_boot "$BOOT_TREE"
+      ;;
+    *)
+      log "ERROR: unknown DEPLOY_SOURCE=${DEPLOY_SOURCE}"
+      return 1
       ;;
   esac
 
   run_install
   install_systemd_units
   write_installed_sha "$target_sha"
-  restart_app_if_running
-  log "Deploy complete: $target_sha"
+  restart_services
+  log "Deploy complete: $short_sha (${GITHUB_REPO:-boot})"
 }
 
 case "$MODE" in

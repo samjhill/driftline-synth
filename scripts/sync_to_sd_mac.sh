@@ -24,22 +24,23 @@ if [[ -z "$BOOT_VOL" ]] || [[ ! -d "$BOOT_VOL" ]]; then
 fi
 
 DEST="$BOOT_VOL/pi-ambient-synth"
-DEPLOY_SOURCE="${DEPLOY_SOURCE:-boot}"
+DEPLOY_SOURCE="${DEPLOY_SOURCE:-github}"
+AUTO_PULL="${AUTO_PULL:-1}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)}"
 ENABLE_SERVICES="${ENABLE_SERVICES:-1}"
+DEPLOY_SHA="${DEPLOY_SHA:-latest}"
 SECRETS_DIR="$ROOT/deploy/secrets"
 
-if [[ -n "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" ]]; then
-  DEPLOY_SHA="$(git -C "$ROOT" rev-parse --short HEAD)"
+DEPLOY_SHA_FULL=""
+if [[ "$DEPLOY_SHA" == "latest" ]]; then
+  DEPLOY_SHA_FULL="(resolved on Pi from GitHub)"
+elif [[ -n "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" ]]; then
   DEPLOY_SHA_FULL="$(git -C "$ROOT" rev-parse HEAD)"
-else
-  DEPLOY_SHA="local-$(date +%Y%m%d%H%M%S)"
-  DEPLOY_SHA_FULL="$DEPLOY_SHA"
 fi
 
 echo "==> Syncing to $DEST"
-echo "    DEPLOY_SOURCE=$DEPLOY_SOURCE  SHA=$DEPLOY_SHA ($DEPLOY_SHA_FULL)"
+echo "    DEPLOY_SOURCE=$DEPLOY_SOURCE  AUTO_PULL=$AUTO_PULL  SHA=$DEPLOY_SHA"
 
 mkdir -p "$DEST/deploy"
 rsync -a --delete \
@@ -54,8 +55,8 @@ rsync -a --delete \
 cat > "$DEST/deploy/deploy.conf" << EOF
 # Written by sync_to_sd_mac.sh — $(date -Iseconds)
 DEPLOY_SOURCE=$DEPLOY_SOURCE
+AUTO_PULL=$AUTO_PULL
 DEPLOY_SHA=$DEPLOY_SHA
-DEPLOY_SHA_FULL=$DEPLOY_SHA_FULL
 GITHUB_REPO=$GITHUB_REPO
 GITHUB_BRANCH=$GITHUB_BRANCH
 ENABLE_SERVICES=$ENABLE_SERVICES
@@ -76,6 +77,11 @@ fi
 if [[ -f "$SECRETS_DIR/wpa_supplicant.conf.local" ]]; then
   cp "$SECRETS_DIR/wpa_supplicant.conf.local" "$BOOT_VOL/wpa_supplicant.conf"
 fi
+if [[ -f "$SECRETS_DIR/github_token" ]]; then
+  mkdir -p "$DEST/deploy/secrets"
+  cp "$SECRETS_DIR/github_token" "$DEST/deploy/secrets/github_token"
+  echo "    GitHub token copied to SD (gitignored)"
+fi
 if ! grep -q '^dtparam=spi=on' "$BOOT_VOL/config.txt" 2>/dev/null; then
   echo 'dtparam=spi=on' >> "$BOOT_VOL/config.txt"
 fi
@@ -86,9 +92,8 @@ sync
 echo ""
 echo "Done. Boot partition ready."
 echo "  deploy SHA : $DEPLOY_SHA"
-echo "  On Pi boot : auto-install via cloud-init + 90s update timer"
-echo "  Re-sync    : run this script again after edits, then reboot Pi (or wait ~90s)"
-if [[ "$DEPLOY_SOURCE" == "github" && -n "$GITHUB_REPO" ]]; then
-  echo "  GitHub mode: Pi will curl github.com/$GITHUB_REPO/archive/<sha>.tar.gz"
-  echo "  Push commit $DEPLOY_SHA_FULL then set DEPLOY_SHA on SD or in deploy.conf"
+echo "  On Pi boot : cloud-init install, then GitHub pull every 60s"
+echo "  Push to $GITHUB_REPO → Pi auto-deploys within ~1 min"
+if [[ "$DEPLOY_SOURCE" == "boot" ]]; then
+  echo "  boot mode: Pi uses SD copy only (set DEPLOY_SOURCE=github for auto-pull)"
 fi

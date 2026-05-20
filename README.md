@@ -47,8 +47,9 @@ chmod +x scripts/sync_to_sd_mac.sh scripts/pi-deploy-sync.sh
 ./scripts/sync_to_sd_mac.sh
 ```
 
-Eject, boot the Pi on Wi‑Fi. First boot runs **cloud-init** → installs deps, enables services.  
-After code changes, run `sync_to_sd_mac.sh` again and **reboot** (or wait ~90s). See [docs/deploy.md](docs/deploy.md).
+Eject, boot the Pi on Wi‑Fi. First boot installs; then the Pi **pulls from GitHub every 60s** and restarts services on new commits.
+
+**Day-to-day:** `git push` — hardware updates automatically. See [docs/deploy.md](docs/deploy.md).
 
 ### Manual SSH install
 

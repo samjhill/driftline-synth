@@ -6,6 +6,7 @@ state/
 deploy/deploy.conf
 deploy/secrets/*
 !deploy/secrets/.gitkeep
+deploy/secrets/github_token
 # Never commit WiFi / credentials (use deploy/secrets/*.local on Mac only)
 network-config
 wpa_supplicant.conf

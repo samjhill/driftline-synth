@@ -1,13 +1,14 @@
 [Unit]
-Description=Pi Ambient Synth deploy sync (boot partition / GitHub SHA)
-After=network-online.target local-fs.target
+Description=Pi Ambient Synth — pull GitHub and redeploy if commit changed
+After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
+
 [Service]
 Type=oneshot
 ExecStart=/home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh sync
 RemainAfterExit=yes
-# Fallback if not yet installed to home
-ExecStartPre=/bin/bash -c 'test -x /home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh || (BASE=$(test -d /boot/firmware/pi-ambient-synth && echo /boot/firmware/pi-ambient-synth || echo /boot/pi-ambient-synth); mkdir -p /home/pi/pi-ambient-synth; rsync -a "$BASE/scripts/pi-deploy-sync.sh" /home/pi/pi-ambient-synth/scripts/; chmod +x /home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh)'
+ExecStartPre=/bin/bash -c 'test -x /home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh || { B=$(for d in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do test -f "$d/scripts/pi-deploy-sync.sh" && echo "$d" && break; done); test -n "$B" && mkdir -p /home/pi/pi-ambient-synth/scripts && cp "$B/scripts/pi-deploy-sync.sh" /home/pi/pi-ambient-synth/scripts/ && chmod +x /home/pi/pi-ambient-synth/scripts/pi-deploy-sync.sh; }'
 
 [Install]
 WantedBy=multi-user.target
