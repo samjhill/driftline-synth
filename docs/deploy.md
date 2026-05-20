@@ -30,7 +30,9 @@ journalctl -u pi-ambient-synth-deploy.service -f
 
 The **e-ink display** shows boot and deploy progress:
 
-`BOOT` (power on) → `NET` (first boot) → `SYNC` → `PULL` → `INSTALL` → `AUDIO` → `SYNTH` → patch sigil.
+`BOOT` (power on) → `WIFI` / `NET` → stepped `1/12`…`12/12` through `INSTALL` → `AUDIO` → `SYNTH` → `READY` → patch sigil.
+
+First boot shows a **step counter** (e.g. `5/12`) and progress bar on the e-ink.
 
 ## First-time SD setup
 

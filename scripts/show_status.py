@@ -3,13 +3,15 @@
 
 Usage:
   show_status.py <phase> <title> [subtitle] [detail]
-  show_status.py --restore-patch   # redraw current patch sigil after deploy
+  show_status.py --step 3 --total 10 <phase> <title> [subtitle] [detail]
+  show_status.py --restore-patch
 """
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
+
 
 def _src_dir() -> Path:
     for candidate in (
@@ -31,14 +33,22 @@ from status_display import StatusDisplay
 from visual_generator import VisualGenerator
 
 
-def show_status(phase: str, title: str, subtitle: str = "", detail: str = "") -> int:
-    config = load_config()
+def show_status(
+    phase: str,
+    title: str,
+    subtitle: str = "",
+    detail: str = "",
+    step: int | None = None,
+    total_steps: int | None = None,
+    config_path: Path | None = None,
+) -> int:
+    config = load_config(config_path)
     if not config.get("eink", {}).get("enabled", True):
         return 0
     display = EInkDisplay(config)
     display.init()
     renderer = StatusDisplay(config)
-    img = renderer.render(phase, title, subtitle, detail)
+    img = renderer.render(phase, title, subtitle, detail, step=step, total_steps=total_steps)
     display.show_image(img)
     return 0
 
@@ -65,6 +75,9 @@ def restore_patch() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="E-ink status display")
     parser.add_argument("--restore-patch", action="store_true")
+    parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument("--step", type=int, default=None)
+    parser.add_argument("--total", type=int, default=None)
     parser.add_argument("phase", nargs="?", default="idle")
     parser.add_argument("title", nargs="?", default="")
     parser.add_argument("subtitle", nargs="?", default="")
@@ -73,7 +86,15 @@ def main() -> int:
 
     if args.restore_patch:
         return restore_patch()
-    return show_status(args.phase, args.title, args.subtitle, args.detail)
+    return show_status(
+        args.phase,
+        args.title,
+        args.subtitle,
+        args.detail,
+        args.step,
+        args.total,
+        args.config,
+    )
 
 
 if __name__ == "__main__":

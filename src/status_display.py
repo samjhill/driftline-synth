@@ -49,6 +49,8 @@ class StatusDisplay:
         subtitle: str = "",
         detail: str = "",
         progress: float | None = None,
+        step: int | None = None,
+        total_steps: int | None = None,
     ) -> Image.Image:
         w, h = self.width, self.height
         img = Image.new("1", (w, h), 1)
@@ -67,6 +69,12 @@ class StatusDisplay:
             text = line[:28]
             draw.text((m, y), text, fill=0, font=font)
             y += 13
+
+        if step is not None and total_steps is not None and total_steps > 0:
+            step = max(1, min(step, total_steps))
+            if progress is None:
+                progress = step / total_steps
+            draw.text((w - m - 36, m + 2), f"{step}/{total_steps}", fill=0, font=font)
 
         ts = datetime.now().strftime("%H:%M:%S")
         draw.line((m, h - 22, w - m, h - 22), fill=0, width=1)

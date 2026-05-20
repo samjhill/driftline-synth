@@ -17,6 +17,14 @@ def test_render_status_image():
     assert img.mode == "1"
 
 
+def test_first_boot_step_counter():
+    config = load_config(Path(__file__).resolve().parent.parent / "config" / "default.yaml")
+    img = StatusDisplay(config).render(
+        "install", "System packages", "apt", step=5, total_steps=12
+    )
+    assert img.mode == "1"
+
+
 def test_boot_phase_label():
     config = load_config(Path(__file__).resolve().parent.parent / "config" / "default.yaml")
     img = StatusDisplay(config).render("boot", "Booting", "Pi Ambient Synth", "power on")

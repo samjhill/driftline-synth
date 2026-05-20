@@ -1,5 +1,5 @@
 #cloud-config
-# First boot: e-ink boot progress, then full install from boot partition.
+# First boot: stepped e-ink progress, WiFi wait, full install.
 
 package_update: false
 timezone: America/New_York
@@ -23,8 +23,22 @@ runcmd:
       echo "pi-ambient-synth not found on boot" >> /var/log/pi-ambient-synth-deploy.log
       exit 1
     fi
+    export FIRST_BOOT_TRACK=1
+    export FIRST_BOOT_TOTAL=12
+    export MARKER_DIR=/var/lib/pi-ambient-synth
     chmod +x "$BOOT/scripts/boot_display.sh" "$BOOT/scripts/pi-deploy-sync.sh"
-    "$BOOT/scripts/boot_display.sh" boot "First boot" "Pi Ambient Synth" "cloud-init"
-    "$BOOT/scripts/boot_display.sh" network "Bringing up" "network" "WiFi / DHCP"
+    "$BOOT/scripts/boot_display.sh" boot "First boot" "Pi Ambient Synth" "starting"
+    "$BOOT/scripts/boot_display.sh" wifi "WiFi" "connecting" "please wait"
+    for i in $(seq 1 45); do
+      if ping -c1 -W2 8.8.8.8 >/dev/null 2>&1 || ping -c1 -W2 1.1.1.1 >/dev/null 2>&1; then
+        "$BOOT/scripts/boot_display.sh" network "Online" "network up" "ok"
+        break
+      fi
+      if test $i -eq 15; then
+        "$BOOT/scripts/boot_display.sh" wifi "WiFi" "still trying" "check router"
+      fi
+      sleep 2
+    done
+    export INSTALL_FIRST_BOOT=1
     "$BOOT/scripts/pi-deploy-sync.sh" bootstrap
-    "$BOOT/scripts/boot_display.sh" synth "Almost ready" "starting services" ""
+    "$BOOT/scripts/boot_display.sh" ready "First boot done" "reboot optional" ""

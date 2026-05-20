@@ -17,7 +17,7 @@ log() { echo "$(date -Iseconds) [$LOG_TAG] $*" | tee -a "$LOG_FILE"; }
 eink_status() {
   local phase="$1" title="$2" subtitle="${3:-}" detail="${4:-}"
   local key="${phase}|${title}|${subtitle}|${detail}"
-  local script py
+  local boot_disp
 
   mkdir -p "$MARKER_DIR"
   if [[ "${EINK_FORCE:-0}" != "1" && -f "$EINK_STATUS_FILE" ]] && [[ "$(cat "$EINK_STATUS_FILE")" == "$key" ]]; then
@@ -25,6 +25,22 @@ eink_status() {
   fi
   echo "$key" > "$EINK_STATUS_FILE"
 
+  for boot_disp in \
+    "$INSTALL_DIR/scripts/boot_display.sh" \
+    /boot/firmware/pi-ambient-synth/scripts/boot_display.sh \
+    /boot/pi-ambient-synth/scripts/boot_display.sh; do
+    if [[ -x "$boot_disp" ]]; then
+      if [[ "${INSTALL_FIRST_BOOT:-0}" == "1" || "$MODE" == "bootstrap" ]]; then
+        export FIRST_BOOT_TRACK=1
+        export FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}"
+        "$boot_disp" "$phase" "$title" "$subtitle" "$detail" || true
+        return 0
+      fi
+      break
+    fi
+  done
+
+  local script py
   script="$INSTALL_DIR/scripts/show_status.py"
   if [[ ! -f "$script" ]]; then
     local b
@@ -184,7 +200,17 @@ run_install() {
     quick_flag=(--quick)
   fi
   log "Running install.sh ${enable_flag[*]:-} ${quick_flag[*]:-}"
-  sudo -u pi bash -lc "cd '$INSTALL_DIR' && ./install.sh ${enable_flag[*]:-} ${quick_flag[*]:-}"
+  if [[ "${INSTALL_FIRST_BOOT:-0}" == "1" || "$MODE" == "bootstrap" ]]; then
+    export INSTALL_FIRST_BOOT=1
+    export FIRST_BOOT_TRACK=1
+    export FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}"
+    eink_status install "Installing" "system packages" "apt (slow)"
+  fi
+  sudo -u pi env INSTALL_FIRST_BOOT="${INSTALL_FIRST_BOOT:-0}" \
+    FIRST_BOOT_TRACK="${FIRST_BOOT_TRACK:-0}" \
+    FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}" \
+    MARKER_DIR="$MARKER_DIR" \
+    bash -lc "cd '$INSTALL_DIR' && ./install.sh ${enable_flag[*]:-} ${quick_flag[*]:-}"
 }
 
 install_systemd_units() {
@@ -253,6 +279,9 @@ do_deploy() {
 
   if [[ "$MODE" == "bootstrap" ]]; then
     EINK_FORCE=1
+    export INSTALL_FIRST_BOOT=1
+    export FIRST_BOOT_TRACK=1
+    export FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}"
     eink_status boot "First boot" "Pi Ambient Synth" "initial setup"
   else
     eink_status boot "Starting" "Checking for updates" ""
@@ -268,6 +297,9 @@ do_deploy() {
   branch_label="${GITHUB_BRANCH:-main}"
   persist_deploy_conf
 
+  if [[ "$MODE" == "bootstrap" ]]; then
+    eink_status network "Deploy setup" "loading config" ""
+  fi
   eink_status checking "Checking GitHub" "$repo_label" "$branch_label"
 
   current_sha="$(installed_sha)"
