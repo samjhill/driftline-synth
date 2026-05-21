@@ -37,6 +37,14 @@ Environment=PI_SKIP_TEXTURE_DRONE=1
 EOF
 
 sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/
+sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth.service" /etc/systemd/system/ 2>/dev/null || true
+sudo mkdir -p /etc/systemd/system/pi-ambient-synth.service.d
+sudo rm -f /etc/systemd/system/pi-ambient-synth.service.d/flues.conf 2>/dev/null || true
+if [[ -f "$INSTALL_DIR/deploy/systemd/pi-ambient-synth.supercollider.conf" ]]; then
+  sudo cp "$INSTALL_DIR/deploy/systemd/pi-ambient-synth.supercollider.conf" \
+    /etc/systemd/system/pi-ambient-synth.service.d/supercollider.conf
+fi
+sudo systemctl enable supercollider.service 2>/dev/null || true
 sudo systemctl daemon-reload
 
 echo "==> ambient mode enabled ($CONF); restarting synth stack"

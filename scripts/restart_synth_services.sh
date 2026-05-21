@@ -31,6 +31,7 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
   fi
   sudo systemctl stop pi-ambient-synth-deploy.timer pi-ambient-synth-midi.service \
     pi-ambient-synth.service supercollider.service pi-ambient-alsa-drone.service pi-flues-synth.service 2>/dev/null || true
+  sudo systemctl disable supercollider.service 2>/dev/null || true
   pkill -x sclang 2>/dev/null || true
   free_alsa
   sleep 1.5

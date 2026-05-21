@@ -25,6 +25,9 @@ free_alsa() {
 
 install_flues_systemd_units() {
   local root="${1:-/home/pi/pi-ambient-synth}"
+  if [[ -f "$root/systemd/pi-ambient-synth.service" ]]; then
+    sudo cp "$root/systemd/pi-ambient-synth.service" /etc/systemd/system/pi-ambient-synth.service
+  fi
   if [[ -f "$root/systemd/pi-flues-synth.service" ]]; then
     sudo cp "$root/systemd/pi-flues-synth.service" /etc/systemd/system/
     sudo systemctl enable pi-flues-synth.service 2>/dev/null || true
@@ -72,5 +75,11 @@ Environment=SC_JACK_PERIOD=4096
 Environment=SC_JACK_NPERIODS=3
 Environment=PI_SKIP_TEXTURE_DRONE=1
 EOF
+  sudo rm -f /etc/systemd/system/pi-ambient-synth.service.d/flues.conf 2>/dev/null || true
+  if [[ -f "$root/deploy/systemd/pi-ambient-synth.supercollider.conf" ]]; then
+    sudo mkdir -p /etc/systemd/system/pi-ambient-synth.service.d
+    sudo cp "$root/deploy/systemd/pi-ambient-synth.supercollider.conf" \
+      /etc/systemd/system/pi-ambient-synth.service.d/supercollider.conf
+  fi
   sudo systemctl daemon-reload
 }

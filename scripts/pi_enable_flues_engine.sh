@@ -24,7 +24,8 @@ fi
 # shellcheck source=scripts/lib/audio_stack.sh
 source "$INSTALL_DIR/scripts/lib/audio_stack.sh"
 install_flues_systemd_units "$INSTALL_DIR"
-sudo systemctl enable pi-flues-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
+sudo systemctl disable supercollider.service 2>/dev/null || true
+sudo systemctl enable pi-flues-synth.service 2>/dev/null || true
 
 export PI_MIDI_BACKEND=flues
 if [[ -x "$INSTALL_DIR/scripts/restart_synth_services.sh" ]]; then
