@@ -193,13 +193,31 @@ do_engine() {
 }
 
 do_services() {
-  log "restart supercollider + pi-ambient-synth"
+  log "restart supercollider + pi-ambient-synth (clean teardown first)"
+  sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
+  sudo systemctl stop pi-ambient-synth.service 2>/dev/null || true
+  sudo systemctl stop supercollider.service 2>/dev/null || true
+  pkill -x sclang 2>/dev/null || true
+  free_alsa
+  sleep 2.0
+  sudo systemctl reset-failed supercollider.service pi-ambient-synth.service 2>/dev/null || true
   rm -f "$MARKER_DIR/sc-engine-ready" 2>/dev/null || true
-  sudo systemctl restart supercollider.service
-  sleep 20
-  sudo systemctl restart pi-ambient-synth.service 2>/dev/null || true
-  sleep 3
+  sudo systemctl start supercollider.service
+  local i
+  for i in $(seq 1 60); do
+    if [[ -f "$MARKER_DIR/sc-engine-ready" ]] && systemctl is-active --quiet supercollider.service; then
+      log "supercollider active + sc-engine-ready"
+      break
+    fi
+    sleep 1
+  done
+  sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
+  sleep 5
   systemctl is-active supercollider.service pi-ambient-synth.service 2>/dev/null | tee -a "$LOG" || true
+  sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
+  if ! systemctl is-active --quiet supercollider.service; then
+    fail "supercollider.service not active after restart"
+  fi
 }
 
 case "$PHASE" in

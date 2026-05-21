@@ -1,15 +1,15 @@
 [Unit]
 Description=SuperCollider Ambient Synth Engine
 After=sound.target
-StartLimitIntervalSec=60
-StartLimitBurst=5
+StartLimitIntervalSec=300
+StartLimitBurst=8
 
 [Service]
 Type=simple
 LimitMEMLOCK=infinity
 User=pi
 WorkingDirectory=/home/pi/pi-ambient-synth
-ExecStartPre=/bin/sh -c 'pkill -x scsynth 2>/dev/null || true; rm -f /var/lib/pi-ambient-synth/sc-engine-ready 2>/dev/null || true; sleep 0.35'
+ExecStartPre=/bin/sh -c 'pkill -x sclang 2>/dev/null || true; pkill -x scsynth 2>/dev/null || true; pkill -x jackd 2>/dev/null || true; pkill -9 -x scsynth 2>/dev/null || true; pkill -9 -x jackd 2>/dev/null || true; rm -f /var/lib/pi-ambient-synth/sc-engine-ready /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true; sleep 1.0'
 Environment=HOME=/home/pi
 Environment=PI_AMBIENT_ROOT=/home/pi/pi-ambient-synth
 Environment=SC_JACK_DEFAULT_INPUTS=
@@ -22,7 +22,7 @@ Environment=SC_HEADLESS_ALSA=1
 # env(1) forces headless Qt; unit Environment alone may be ignored by some sclang builds.
 ExecStart=/home/pi/pi-ambient-synth/scripts/run_sclang_engine.sh
 Restart=on-failure
-RestartSec=3
+RestartSec=15
 TimeoutStartSec=120
 StandardOutput=journal
 StandardError=journal

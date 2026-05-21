@@ -19,9 +19,13 @@ export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 export SC_HEADLESS_ALSA="${SC_HEADLESS_ALSA:-1}"
 # Orphan scsynth from a prior crash/restart can hold ALSA while sclang has no synths.
 rm -f "$READY_MARKER" 2>/dev/null || true
-pkill -x scsynth 2>/dev/null || true
-sleep 0.35
-"$ROOT/scripts/start_scsynth_alsa.sh"
+# ExecStartPre clears jackd/scsynth; avoid racing a second teardown here.
+if ! pgrep -x jackd >/dev/null || ! pgrep -x scsynth >/dev/null; then
+  "$ROOT/scripts/start_scsynth_alsa.sh" || exit 1
+else
+  export SC_JACK_ALREADY=1
+  "$ROOT/scripts/start_scsynth_alsa.sh" || exit 1
+fi
 
 # Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
 # Line-buffered stdout so systemd journal shows Booting/scsynth lines promptly.
