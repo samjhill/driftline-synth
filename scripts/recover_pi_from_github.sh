@@ -87,7 +87,7 @@ fi
 log "Restarting services"
 sudo systemctl daemon-reload
 sudo systemctl restart supercollider.service 2>/dev/null || sudo systemctl start supercollider.service
-sleep 4
+sleep 20
 sudo systemctl restart pi-ambient-synth.service
 sudo systemctl restart pi-ambient-synth-monitor.service
 sudo systemctl enable --now pi-ambient-synth-deploy.timer 2>/dev/null || true

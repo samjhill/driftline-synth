@@ -278,7 +278,7 @@ announce_network() {
     /boot/firmware/pi-ambient-synth/scripts/announce_network.sh \
     /boot/pi-ambient-synth/scripts/announce_network.sh; do
     if [[ -x "$ann" ]]; then
-      INSTALL_DIR="$INSTALL_DIR" "$ann" || true
+      INSTALL_DIR="$INSTALL_DIR" "$ann" >&2 || true
       if [[ -f "$MARKER_DIR/network.json" ]]; then
         log "Network: $(python3 -c "import json; d=json.load(open('$MARKER_DIR/network.json')); print(d.get('primary_ip','?'), d.get('monitor_url',''))" 2>/dev/null || echo 'see network.json')"
       fi
@@ -315,7 +315,6 @@ resolve_target_sha() {
       log "ERROR: AUTO_PULL requires GITHUB_REPO"
       return 1
     fi
-    wait_for_network || log "WARN: network not ready"
     local sha
     sha="$(resolve_github_sha "${GITHUB_REPO}" "${GITHUB_BRANCH:-main}")" || return 1
     echo "$sha"
@@ -358,6 +357,7 @@ do_deploy() {
   fi
 
   current_sha="$(installed_sha)"
+  wait_for_network || log "WARN: network not ready"
   if ! target_sha="$(resolve_target_sha)"; then
     if [[ "$MODE" == "bootstrap" ]] && boot_base="$(find_boot_tree)"; then
       log "WARN: GitHub unreachable — first boot from SD card"

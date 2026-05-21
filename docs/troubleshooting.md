@@ -119,6 +119,10 @@ cd ~/pi-ambient-synth
 
 6. **KeyStep keyboard split** — notes **below G3 (MIDI 55)** only shift the drone; play **higher keys** for melody. The idle drone should still be faintly audible when SC is running.
 
+8. **SHIFT+PLAY does nothing** — KeyStep usually sends **MIDI Start** (`0xFA`), not CC 102. Recent builds handle `start`/`stop` realtime messages. Hold **Shift** (often CC 63 ≥ 64), press **Play**, and check `journalctl -u pi-ambient-synth -f` for `SHIFT+PLAY (MIDI start) → reseed`. Debug: `systemctl edit pi-ambient-synth` → add `ExecStart=.../main.py --debug-midi` temporarily.
+
+9. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
+
 7. Volume in `config/default.yaml` (`audio.default_volume`, default `0.65`).
 
 ## SuperCollider won't boot

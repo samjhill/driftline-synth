@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from config_loader import load_config
+from config_loader import install_root, load_config, resolve_data_path
 from logging_setup import setup_logging
 from midi_controller import midi_status_summary
 from network_info import network_snapshot
@@ -196,9 +196,10 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
     journal_lines = int(monitor.get("journal_lines", 22))
     log_tail_lines = int(monitor.get("log_tail_lines", 35))
 
+    root = install_root()
     store = StateStore(
-        Path(app.get("state_path", "./state/current_patch.json")),
-        Path(app.get("favorites_path", "./state/favorites.json")),
+        resolve_data_path(app.get("state_path", "./state/current_patch.json"), root),
+        resolve_data_path(app.get("favorites_path", "./state/favorites.json"), root),
     )
     patch = resolve_current_patch(config, store, PatchGenerator(config))
     if not store.state_path.exists():

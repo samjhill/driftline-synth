@@ -48,6 +48,16 @@ class MidiController:
         self._recall_window = midi.get("favorite_recall_window_ms", 600) / 1000.0
         self._weather_cc = midi.get("weather_cc", 1)
         self._split_note = midi.get("split_note", 55)
+        self._shift_cc = midi.get("shift_cc", 63)
+        self._shift_threshold = midi.get("shift_cc_threshold", 64)
+        transport_cc = midi.get("transport_cc", {})
+        self._transport_cc: dict[int, str] = dict(TRANSPORT_CC)
+        for event, cc in transport_cc.items():
+            if isinstance(cc, int):
+                self._transport_cc[cc] = event
+            elif isinstance(cc, list):
+                for n in cc:
+                    self._transport_cc[int(n)] = event
 
         self.on_clock: Callable[[], None] | None = None
 
@@ -148,15 +158,15 @@ class MidiController:
             ch = getattr(msg, "channel", 0)
             if not self._channel_ok(ch):
                 return
-            if msg.control == 63 and msg.value >= 64:
+            if msg.control == self._shift_cc and msg.value >= self._shift_threshold:
                 self._shift_held = True
-            elif msg.control == 63 and msg.value < 64:
+            elif msg.control == self._shift_cc and msg.value < self._shift_threshold:
                 self._shift_held = False
             if msg.control == 64:
                 if self.on_hold_change:
                     self.on_hold_change(msg.value >= 64)
-            if msg.control in TRANSPORT_CC:
-                event = TRANSPORT_CC[msg.control]
+            if msg.control in self._transport_cc:
+                event = self._transport_cc[msg.control]
                 if event == "stop":
                     now = time.time()
                     if now - self._last_stop_at < self._recall_window and self.on_recall_favorite:
@@ -171,6 +181,23 @@ class MidiController:
                 self.on_weather_change(msg.value / 127.0)
             if self.on_cc:
                 self.on_cc(msg.control, msg.value, ch)
+        elif msg.type in ("start", "continue"):
+            if self._shift_held and self.on_reseed_requested:
+                logger.info("SHIFT+PLAY (MIDI %s) → reseed", msg.type)
+                self.on_reseed_requested()
+            elif self.on_transport:
+                self.on_transport("play")
+        elif msg.type == "stop":
+            now = time.time()
+            if now - self._last_stop_at < self._recall_window and self.on_recall_favorite:
+                logger.info("Double STOP → recall favorite")
+                self.on_recall_favorite()
+            self._last_stop_at = now
+            if self._shift_held and self.on_freeze_requested:
+                logger.info("SHIFT+STOP → freeze/favorite")
+                self.on_freeze_requested()
+            elif self.on_transport:
+                self.on_transport("stop")
         elif msg.type == "clock":
             if self.on_clock:
                 self.on_clock()

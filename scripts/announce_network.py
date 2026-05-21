@@ -73,7 +73,8 @@ def main() -> int:
     ip = snap.get("primary_ip") or "no IP yet"
     host = snap.get("hostname", "pi")
     url = snap.get("monitor_url") or f"port {port}"
-    print(f"Network: {ip}  ({host}.local)  monitor {url}")
+    # stderr only — deploy captures stdout from resolve_target_sha (must not mix with SHA).
+    print(f"Network: {ip}  ({host}.local)  monitor {url}", file=sys.stderr)
 
     if args.no_eink or not config.get("eink", {}).get("enabled", True):
         return 0

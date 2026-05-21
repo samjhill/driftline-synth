@@ -17,7 +17,12 @@ pgrep -a scsynth 2>/dev/null || echo "no scsynth"
 echo ""
 echo "=== engine file on disk ==="
 if [[ -f "$SCD" ]]; then
-  grep -E 'engine script loading|listening on OSC' "$SCD" | head -2 || true
+  grep -E 'engine script loading|listening on OSC|waitForBoot' "$SCD" | head -3 || true
+  if [[ -f /var/lib/pi-ambient-synth/sc-engine-ready ]]; then
+    echo "READY marker: $(cat /var/lib/pi-ambient-synth/sc-engine-ready)"
+  else
+    echo "READY marker: missing (/var/lib/pi-ambient-synth/sc-engine-ready)"
+  fi
 else
   echo "MISSING: $SCD"
 fi

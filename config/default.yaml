@@ -18,6 +18,13 @@ midi:
     - "Arturia"
   channel: null
   fallback_to_first_available: true
+  # KeyStep Shift is often CC 63; Play/Stop are MMC start/stop (handled) or CC below.
+  shift_cc: 63
+  shift_cc_threshold: 64
+  transport_cc:
+    play: [102]
+    stop: [103]
+    record: [104]
   weather_cc: 1
   favorite_recall_window_ms: 600
   split_note: 55

@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from config_loader import load_config
+from config_loader import install_root, load_config, resolve_data_path
 from eink_display import EInkDisplay
 from logging_setup import setup_logging
 from midi_controller import MidiController, save_midi_status
@@ -41,9 +41,12 @@ class PiAmbientSynth:
             self.config.setdefault("eink", {})["enabled"] = False
 
         app = config.get("app", {})
+        root = install_root()
+        self._marker_dir = Path(app.get("marker_dir", "/var/lib/pi-ambient-synth"))
+        self._sc_ready_marker = self._marker_dir / "sc-engine-ready"
         self.state_store = StateStore(
-            Path(app.get("state_path", "./state/current_patch.json")),
-            Path(app.get("favorites_path", "./state/favorites.json")),
+            resolve_data_path(app.get("state_path", "./state/current_patch.json"), root),
+            resolve_data_path(app.get("favorites_path", "./state/favorites.json"), root),
         )
         self.patch_gen = PatchGenerator(config)
         self.osc = OscClient(config)
@@ -52,7 +55,9 @@ class PiAmbientSynth:
         self.midi = MidiController(config)
         self.play = PlayTracker()
         self.clock = MidiClock()
-        self._sigils_dir = Path(config.get("midi", {}).get("sigils_dir", "./state/sigils"))
+        self._sigils_dir = resolve_data_path(
+            config.get("midi", {}).get("sigils_dir", "./state/sigils"), root
+        )
         self._export_sigil = config.get("midi", {}).get("export_sigil_on_reseed", True)
         self._patch: Patch | None = None
         self._running = True
@@ -81,6 +86,19 @@ class PiAmbientSynth:
             self.state_store.save_current(patch)
         return patch
 
+    def _wait_for_sc_engine(self, timeout: float = 45.0) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._sc_ready_marker.is_file():
+                logger.info("SuperCollider engine ready (%s)", self._sc_ready_marker)
+                return True
+            time.sleep(0.25)
+        logger.warning(
+            "SuperCollider engine not ready after %.0fs — notes may be silent until SC loads",
+            timeout,
+        )
+        return False
+
     def startup(self) -> None:
         vol = self.config.get("audio", {}).get("default_volume", 0.65)
         self.osc.set_volume(vol)
@@ -95,6 +113,7 @@ class PiAmbientSynth:
                 battery=self._battery_for_display(),
             )
         self._patch = self._resolve_patch()
+        self._wait_for_sc_engine()
         self.osc.send_patch(self._patch)
         self._update_display(self._patch)
         self._wire_midi()

@@ -52,22 +52,21 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc313-serverRunning)".postln;
+"Pi Ambient Synth engine script loading (build sc313-waitForBoot)".postln;
 "Booting Pi Ambient Synth engine...".postln;
+Server.killAll;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-// Do not use N.wait here — sclang .scd on main thread is not a Routine (yield error on Pi).
-if(s.serverRunning, { s.quit; s.sync });
-if(s.serverRunning.not, {
-	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
-	s.boot(~audioDevice);
-});
-s.sync;
+// Do not use N.wait on the main thread — use waitForBoot after boot (blocks until scsynth is up).
+if(s.serverRunning, { s.quit });
+"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
+s.boot(~audioDevice);
+s.waitForBoot;
 if(s.serverRunning.not, {
 	"ERROR: scsynth failed to start — check: which scsynth, aplay -l, SC_AUDIO_DEVICE".postln;
 }, {
-	("scsynth running — device: %, out ch: %".format(
-		s.options.device, s.options.numOutputBusChannels
+	("scsynth running — device: %, rate: %, out ch: %".format(
+		s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
 	)).postln;
 });
 
@@ -444,6 +443,7 @@ OSCdef(\piTestBeep, { |msg|
 
 NetAddr.localAddr.port = port;
 "Pi Ambient Synth listening on OSC port %".format(port).postln;
+"mkdir -p /var/lib/pi-ambient-synth && date -Iseconds > /var/lib/pi-ambient-synth/sc-engine-ready".unixCmd;
 
 // Keep sclang alive for systemd: fork + block main on thread end (no N.wait on main thread).
 fork {

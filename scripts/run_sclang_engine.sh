@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="${PI_AMBIENT_ROOT:-/home/pi/pi-ambient-synth}"
 SCD="${ROOT}/synth/ambient_engine.scd"
+READY_MARKER="${PI_SC_READY_MARKER:-/var/lib/pi-ambient-synth/sc-engine-ready}"
 
 export HOME="${HOME:-/home/pi}"
 export QT_QPA_PLATFORM=offscreen
@@ -14,6 +15,11 @@ export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
 export JACK_NO_AUDIO_RESERVATION="${JACK_NO_AUDIO_RESERVATION:-1}"
 # ALSA device name from `aplay -L` (e.g. plughw:0,0). Empty makes scsynth try JACK.
 export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-plughw:0,0}"
+
+# Orphan scsynth from a prior crash/restart can hold ALSA while sclang has no synths.
+rm -f "$READY_MARKER" 2>/dev/null || true
+pkill -x scsynth 2>/dev/null || true
+sleep 0.35
 
 # Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
 # Line-buffered stdout so systemd journal shows Booting/scsynth lines promptly.
