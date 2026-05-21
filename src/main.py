@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import random
 import signal
 import sys
@@ -130,19 +131,33 @@ class PiAmbientSynth:
         self._wait_for_sc_engine()
         self.osc.send_patch(self._patch)
         self._update_display(self._patch)
-        self._wire_midi()
-        if not self.midi.open():
-            logger.warning("MIDI unavailable — OSC/visual still active")
-            save_midi_status(self.config, connected=False, port_name=None, listening=False)
-        else:
-            self.midi.start()
+        if os.environ.get("PI_NO_MIDI", "").strip() in ("1", "true", "yes"):
+            logger.info(
+                "MIDI disabled in this process (use pi-ambient-synth-midi.service / pi_midi_bridge.py)"
+            )
             save_midi_status(
                 self.config,
-                connected=True,
-                port_name=self.midi.port_name,
-                listening=True,
-                state="running",
+                connected=False,
+                port_name=None,
+                listening=False,
+                state="midi-bridge",
             )
+        else:
+            self._wire_midi()
+            if not self.midi.open():
+                logger.warning("MIDI unavailable — OSC/visual still active")
+                save_midi_status(
+                    self.config, connected=False, port_name=None, listening=False
+                )
+            else:
+                self.midi.start()
+                save_midi_status(
+                    self.config,
+                    connected=True,
+                    port_name=self.midi.port_name,
+                    listening=True,
+                    state="running",
+                )
 
     def _wire_midi(self) -> None:
         self.midi.on_note_on = self._on_note_on

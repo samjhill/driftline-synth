@@ -90,12 +90,17 @@ check_synth_service() {
   if [[ "$state" != "active" ]]; then
     fail "pi-ambient-synth is $state (SIGBUS? check journal)"
   fi
-  journalctl -u pi-ambient-synth -n 30 --no-pager --since "3 min ago" 2>/dev/null \
+  journalctl -u pi-ambient-synth -n 15 --no-pager --since "2 min ago" 2>/dev/null \
     | grep -q 'status=7/BUS' && fail "pi-ambient-synth still SIGBUS in journal"
-  journalctl -u pi-ambient-synth -n 40 --no-pager --since "10 min ago" 2>/dev/null \
-    | grep -q 'MIDI listener started' \
-    || log "WARN: no 'MIDI listener started' in synth journal (keyboard may still work after open)"
   log "pi-ambient-synth active"
+  if systemctl is-active --quiet pi-ambient-synth-midi.service 2>/dev/null; then
+    journalctl -u pi-ambient-synth-midi -n 20 --no-pager --since "3 min ago" 2>/dev/null \
+      | grep -q 'MIDI bridge running' \
+      || fail "pi-ambient-synth-midi started but bridge log missing"
+    log "pi-ambient-synth-midi active"
+  else
+    log "WARN: pi-ambient-synth-midi not active (simulate_midi_e2e still validates OSC path)"
+  fi
   return 0
 }
 

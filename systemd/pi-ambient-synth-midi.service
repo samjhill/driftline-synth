@@ -1,0 +1,19 @@
+[Unit]
+Description=Pi Ambient Synth MIDI bridge (KeyStep → OSC)
+After=supercollider.service pi-ambient-synth.service
+Requires=supercollider.service
+StartLimitIntervalSec=120
+StartLimitBurst=6
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+Environment=HOME=/home/pi
+Environment=PI_MIDI_MAIN_THREAD=1
+ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/scripts/pi_midi_bridge.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

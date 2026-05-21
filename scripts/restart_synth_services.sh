@@ -14,6 +14,7 @@ log() { echo "$(date -Iseconds) [restart-synth] $*"; }
 
 log "stop deploy timer + synth services"
 sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
+sudo systemctl stop pi-ambient-synth-midi.service 2>/dev/null || true
 sudo systemctl stop pi-ambient-synth.service 2>/dev/null || true
 sudo systemctl stop supercollider.service 2>/dev/null || true
 pkill -x sclang 2>/dev/null || true
@@ -43,7 +44,15 @@ fi
 log "start pi-ambient-synth"
 sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
 sleep 5
-systemctl is-active supercollider.service pi-ambient-synth.service 2>/dev/null || true
+if ! systemctl is-active --quiet pi-ambient-synth.service; then
+  echo "ERROR: pi-ambient-synth.service not active" >&2
+  exit 1
+fi
+log "start pi-ambient-synth-midi"
+sudo systemctl enable pi-ambient-synth-midi.service 2>/dev/null || true
+sudo systemctl start pi-ambient-synth-midi.service 2>/dev/null || true
+sleep 3
+systemctl is-active supercollider.service pi-ambient-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
 sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
 
 if [[ ! -f "$READY" ]]; then
