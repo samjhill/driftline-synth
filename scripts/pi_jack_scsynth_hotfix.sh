@@ -18,7 +18,7 @@ case "${1:-}" in
   services-only|services) HOTFIX_SERVICES_ONLY=1 ;;
 esac
 
-PINNED_SHA="c6b3d1a"
+PINNED_SHA="1b631f5"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
@@ -64,7 +64,8 @@ free_alsa() {
   pkill -x sclang 2>/dev/null || true
   pkill -x scsynth 2>/dev/null || true
   pkill -x jackd 2>/dev/null || true
-  sleep 0.5
+  sleep 1.0
+  rm -f /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true
 }
 
 do_fetch() {

@@ -3,13 +3,23 @@
 # Start a stable jackd on ALSA first, then scsynth as a JACK client (no -H).
 set -euo pipefail
 
+# systemd sets LimitMEMLOCK; curl|bash smoke runs without it — re-exec with prlimit when possible.
+if [[ -z "${SC_AUDIO_PRLIMIT:-}" ]] && command -v prlimit >/dev/null 2>&1; then
+  export SC_AUDIO_PRLIMIT=1
+  exec prlimit --memlock=unlimited -- "$BASH" "$0" "$@"
+fi
+ulimit -l unlimited 2>/dev/null || true
+
 PORT="${SC_SYNTH_PORT:-57110}"
 RATE="${SC_SAMPLE_RATE:-48000}"
 LOG="${SCSYNTH_START_LOG:-/tmp/scsynth-alsa-start.log}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 DRIVER_FILE="$MARKER_DIR/scsynth_audio.conf"
-JACK_PERIOD="${SC_JACK_PERIOD:-2048}"
-JACK_NPERIODS="${SC_JACK_NPERIODS:-3}"
+# Smaller buffers than 2048/3 — less /dev/shm and avoids boost::interprocess::bad_alloc on Pi.
+JACK_PERIOD="${SC_JACK_PERIOD:-1024}"
+JACK_NPERIODS="${SC_JACK_NPERIODS:-2}"
+SCSYNTH_JACK_SETTLE_SEC="${SCSYNTH_JACK_SETTLE_SEC:-1.5}"
+SCSYNTH_START_RETRIES="${SCSYNTH_START_RETRIES:-3}"
 
 # jackd -dalsa wants hw:0 or hw:0,0 (not plughw:)
 jack_alsa_dev() {
@@ -68,15 +78,22 @@ jack_ready() {
 stop_audio_stack() {
   pkill -x scsynth 2>/dev/null || true
   pkill -x jackd 2>/dev/null || true
-  sleep 0.5
-  rm -f /dev/shm/jack-* /dev/shm/jackdmp* 2>/dev/null || true
+  local i
+  for i in $(seq 1 20); do
+    pgrep -x scsynth >/dev/null || pgrep -x jackd >/dev/null || break
+    sleep 0.15
+  done
+  pkill -9 -x scsynth 2>/dev/null || true
+  pkill -9 -x jackd 2>/dev/null || true
+  sleep 0.6
+  rm -f /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true
 }
 
 wait_jack() {
   local pid="$1"
   local i
-  sleep 0.8
-  for i in $(seq 1 40); do
+  sleep 1.2
+  for i in $(seq 1 50); do
     if ! kill -0 "$pid" 2>/dev/null; then
       return 1
     fi
@@ -121,9 +138,10 @@ start_jack() {
   local pid
   {
     echo "=== $(date -Iseconds) jackd dev=$dev rate=$RATE period=$JACK_PERIOD n=$JACK_NPERIODS ==="
-    echo "cmd: jackd -dalsa -d$dev -r$RATE -p$JACK_PERIOD -n$JACK_NPERIODS -i0 -o2"
-    # Playback-only (-i0); large buffer; no -R (RT often denied on headless Pi).
-    jackd -dalsa -d"$dev" -r"$RATE" -p"$JACK_PERIOD" -n"$JACK_NPERIODS" -i0 -o2
+    echo "cmd: jackd -m -dalsa -d$dev -r$RATE -p$JACK_PERIOD -n$JACK_NPERIODS -i0 -o2"
+    # -m: no memlock (headless Pi often lacks RT/memlock outside systemd).
+    # Playback-only (-i0); no -R (RT scheduling often denied).
+    jackd -m -dalsa -d"$dev" -r"$RATE" -p"$JACK_PERIOD" -n"$JACK_NPERIODS" -i0 -o2
   } >>"$LOG" 2>&1 &
   pid=$!
   if wait_jack "$pid"; then
@@ -139,31 +157,49 @@ start_jack() {
 
 start_scsynth_client() {
   local dev="$1"
-  local pid
+  local pid attempt
   export JACK_NO_START_SERVER=1
-  {
-    echo "=== $(date -Iseconds) scsynth JACK client dev=$dev port=$PORT rate=$RATE ==="
-    echo "cmd: scsynth -u $PORT -i 2 -o 2 -R $RATE -l 0  (no -H; jackd owns ALSA)"
-    scsynth -u "$PORT" -i 2 -o 2 -R "$RATE" -l 0
-  } >>"$LOG" 2>&1 &
-  pid=$!
-  if wait_scsynth "$pid"; then
-    mkdir -p "$MARKER_DIR"
+
+  if ! jack_ready; then
+    echo "ERROR: start_scsynth_client called before jackd ready" >>"$LOG"
+    return 1
+  fi
+  sleep "$SCSYNTH_JACK_SETTLE_SEC"
+
+  for attempt in $(seq 1 "$SCSYNTH_START_RETRIES"); do
+    pkill -x scsynth 2>/dev/null || true
+    sleep 0.4
     {
-      echo "SC_SYNTH_DRIVER=jack"
-      echo "SC_JACK_DEVICE=$dev"
-      echo "SC_SYNTH_PORT=$PORT"
-      echo "SC_SYNTH_RATE=$RATE"
-      echo "SC_JACK_PERIOD=$JACK_PERIOD"
-      echo "SC_JACK_NPERIODS=$JACK_NPERIODS"
-    } >"$DRIVER_FILE"
-    echo "scsynth ready: jack+alsa dev=$dev port=$PORT pid=$pid"
-    return 0
-  fi
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-  fi
+      echo "=== $(date -Iseconds) scsynth JACK client dev=$dev port=$PORT rate=$RATE attempt=$attempt ==="
+      echo "cmd: scsynth -u $PORT -i 2 -o 2 -R $RATE -l 0  (no -H; jackd owns ALSA)"
+      scsynth -u "$PORT" -i 2 -o 2 -R "$RATE" -l 0
+    } >>"$LOG" 2>&1 &
+    pid=$!
+    if wait_scsynth "$pid"; then
+      mkdir -p "$MARKER_DIR"
+      {
+        echo "SC_SYNTH_DRIVER=jack"
+        echo "SC_JACK_DEVICE=$dev"
+        echo "SC_SYNTH_PORT=$PORT"
+        echo "SC_SYNTH_RATE=$RATE"
+        echo "SC_JACK_PERIOD=$JACK_PERIOD"
+        echo "SC_JACK_NPERIODS=$JACK_NPERIODS"
+      } >"$DRIVER_FILE"
+      echo "scsynth ready: jack+alsa dev=$dev port=$PORT pid=$pid (attempt $attempt)"
+      return 0
+    fi
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    fi
+    echo "scsynth attempt $attempt failed; retrying after shm cleanup" >>"$LOG"
+    rm -f /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true
+    sleep 1.0
+    if ! jack_ready; then
+      return 1
+    fi
+    sleep "$SCSYNTH_JACK_SETTLE_SEC"
+  done
   return 1
 }
 
@@ -172,7 +208,6 @@ try_stack() {
   if ! start_jack "$dev"; then
     return 1
   fi
-  sleep 0.5
   if start_scsynth_client "$dev"; then
     return 0
   fi
