@@ -119,6 +119,9 @@ Environment=JACK_NO_START_SERVER=1
 Environment=JACK_NO_AUDIO_RESERVATION=1
 Environment=SC_HEADLESS_ALSA=1
 Environment=SC_AUDIO_DEVICE=hw:0,0
+Environment=SC_JACK_PERIOD=4096
+Environment=SC_JACK_NPERIODS=3
+Environment=SCSYNTH_ZEROCONF=0
 EOF
   sudo systemctl daemon-reload
   ping "systemd unit installed"
