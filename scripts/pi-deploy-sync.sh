@@ -106,6 +106,14 @@ load_deploy_conf() {
 
 persist_deploy_conf() {
   sudo mkdir -p /etc/pi-ambient-synth
+  # Boot SD deploy.conf must not undo GitHub auto-pull written after first bootstrap.
+  if [[ -f "$PERSIST_CONF" ]]; then
+    # shellcheck disable=SC1090
+    source "$PERSIST_CONF"
+    if [[ "${DEPLOY_SOURCE:-}" == "github" && "${AUTO_PULL:-0}" == "1" ]]; then
+      return 0
+    fi
+  fi
   if [[ -n "${BOOT_TREE:-}" && -f "$BOOT_TREE/$DEPLOY_CONF_NAME" ]]; then
     sudo cp "$BOOT_TREE/$DEPLOY_CONF_NAME" "$PERSIST_CONF"
   elif [[ -f "$INSTALL_DIR/$DEPLOY_CONF_NAME" ]]; then
@@ -164,6 +172,7 @@ rsync_from_boot() {
   rsync -a --delete \
     --exclude '.venv' \
     --exclude '.git' \
+    --exclude '.deploy_sha' \
     --exclude 'state' \
     --exclude '__pycache__' \
     --exclude '.pytest_cache' \

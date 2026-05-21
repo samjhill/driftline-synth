@@ -179,7 +179,16 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
             journal_errors[key] = err
         status_snippets[key] = _systemctl_status_tail(unit, 8)
 
-    midi = midi_status_summary(config)
+    try:
+        midi = midi_status_summary(config)
+    except Exception as e:
+        logger.warning("MIDI status unavailable: %s", e)
+        midi = {
+            "label": f"MIDI status unavailable ({e})",
+            "ok": None,
+            "inputs": [],
+            "device_present": False,
+        }
 
     return {
         "app": app.get("name", "Pi Ambient Synth"),

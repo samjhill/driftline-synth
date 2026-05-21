@@ -303,9 +303,22 @@ def save_midi_status(
 
 def midi_status_summary(config: dict[str, Any]) -> dict[str, Any]:
     """Hardware scan plus optional synth marker for monitor UI."""
-    snap = midi_snapshot(config)
     marker_dir = config.get("app", {}).get("marker_dir", "/var/lib/pi-ambient-synth")
     synth = load_midi_marker(marker_dir)
+    try:
+        snap = midi_snapshot(config)
+    except Exception as e:
+        logger.warning("MIDI port scan failed: %s", e)
+        snap = {
+            "inputs": [],
+            "preferred_keywords": config.get("midi", {}).get(
+                "preferred_input_keywords", ["KeyStep", "Arturia"]
+            ),
+            "selected_port": None,
+            "preferred_found": False,
+            "device_present": False,
+            "scan_error": str(e),
+        }
     label, ok = _midi_status_label(snap, synth)
     return {**snap, "synth": synth, "label": label, "ok": ok}
 

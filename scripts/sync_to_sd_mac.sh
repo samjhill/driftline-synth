@@ -24,10 +24,12 @@ if [[ -z "$BOOT_VOL" ]] || [[ ! -d "$BOOT_VOL" ]]; then
 fi
 
 DEST="$BOOT_VOL/pi-ambient-synth"
-# First boot installs from the SD copy (reliable offline); timer can pull GitHub once online.
+# First boot installs from the SD copy (reliable offline); timer pulls GitHub once online.
 DEPLOY_SOURCE="${DEPLOY_SOURCE:-boot}"
 AUTO_PULL="${AUTO_PULL:-1}"
-DEPLOY_SHA="${DEPLOY_SHA:-boot-sd}"
+if [[ -z "${DEPLOY_SHA:-}" ]]; then
+  DEPLOY_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo boot-sd)"
+fi
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)}"
 ENABLE_SERVICES="${ENABLE_SERVICES:-1}"

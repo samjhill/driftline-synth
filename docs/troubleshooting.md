@@ -94,6 +94,33 @@ using `sclang -l script.scd` (wrong). Use `scripts/run_sclang_engine.sh`, which 
 
 Pull latest `main` — `Path` must be imported at the top of `src/eink_display.py`.
 
+## LAN monitor missing MIDI keyboard rows
+
+The status page at `http://<pi-ip>:8080/` only shows **MIDI keyboard** / **MIDI inputs** when `monitor_server.py` includes that feature (commit `2b4a018` and later). If `/api/status` has no `"midi"` key, the Pi is still running an older copy — often because the deploy timer keeps syncing from the **boot partition** SD image instead of GitHub.
+
+Check:
+
+```bash
+curl -s http://127.0.0.1:8080/api/status | python3 -c "import sys,json; print('midi' in json.load(sys.stdin))"
+```
+
+**Fix on a running Pi** (SSH):
+
+```bash
+bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
+# wait ~1–2 min, then verify:
+curl -s http://127.0.0.1:8080/api/status | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('midi',{}).get('label'))"
+sudo systemctl restart pi-ambient-synth-monitor
+```
+
+**Fix from your Mac** (re-copy latest code to the SD boot partition, then reboot or trigger deploy):
+
+```bash
+./scripts/sync_to_sd_mac.sh /Volumes/bootfs
+```
+
+After the Pi pulls `main`, the monitor table should list MIDI keyboard status again.
+
 ## SuperCollider stuck on `activating`
 
 Usually `sclang` exits right after the script finishes (or the boot `fork` errors before the keep-alive loop), so systemd keeps restarting and `systemctl is-active` stays `activating` or flips `activating`/`failed`. The engine script must block the **main** thread (`while { true } { 1.wait }` after the boot `fork` in `synth/ambient_engine.scd`). `Restart=on-failure` in `systemd/supercollider.service` avoids a tight restart loop on clean exit; `Restart=always` would restart even on exit code 0 and can make `activating` worse.
