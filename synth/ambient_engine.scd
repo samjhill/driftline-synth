@@ -54,7 +54,7 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build 28400a8)".postln;
+"Pi Ambient Synth engine script loading (build 649a8f2)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~configureServerAudio.();

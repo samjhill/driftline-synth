@@ -108,6 +108,32 @@ cd ~/pi-ambient-synth
 - Run interactively: `sclang synth/ambient_engine.scd` and read errors
 - Jack/PipeWire conflicts: try `export SC_JACK_DEFAULT_INPUTS=` as in systemd unit
 
+### Journal: `syntax error` at `if(companionOn and {`
+
+The engine file on disk is **stale**. SuperCollider needs `and:` (with a colon), not `and {`.
+
+**Do not** rely on `curl …/main/synth/ambient_engine.scd` alone — GitHub’s `raw.githubusercontent.com` **`main`** URL can lag behind the real branch for hours and may still serve an old file after `main` is fixed. Prefer a full deploy:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/recover_pi_from_github.sh | bash
+```
+
+Or fetch the engine by **commit SHA** (check `https://api.github.com/repos/samjhill/driftline-synth/commits/main` for the current `sha`), then verify line 381:
+
+```bash
+SHA=e686042   # replace with current main sha
+curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/${SHA}/synth/ambient_engine.scd" \
+  -o ~/pi-ambient-synth/synth/ambient_engine.scd
+sed -n '381p' ~/pi-ambient-synth/synth/ambient_engine.scd
+# must show: if(companionOn and: { companionSynth.isNil }, {
+```
+
+Quick one-line patch if you cannot redeploy:
+
+```bash
+sed -i 's/companionOn and {/companionOn and: {/' ~/pi-ambient-synth/synth/ambient_engine.scd
+```
+
 ## SuperCollider crashes: `qt.qpa.xcb: could not connect to display`
 
 The Pi has no desktop/X11. `sclang` was built with Qt and aborts unless told to run headless.
