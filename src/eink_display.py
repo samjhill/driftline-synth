@@ -41,7 +41,9 @@ def _load_epd_modules() -> None:
 
     vendor = _vendor_waveshare_path()
     if vendor.is_dir():
-        vendor_str = str(vendor)
+        vendor_str = str(vendor.resolve())
+        # Prefer bundled driver over GhostRoll / apt copies in /usr/local.
+        sys.path = [p for p in sys.path if "/dist-packages/waveshare_epd" not in p]
         if vendor_str not in sys.path:
             sys.path.insert(0, vendor_str)
         _purge_waveshare_modules()

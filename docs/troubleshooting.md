@@ -337,6 +337,16 @@ sudo rm -rf /usr/local/lib/python3.*/dist-packages/waveshare_epd
   EINK_FORCE=1 ./scripts/boot_display.sh ready "Test" "e-ink OK" ""
   ```
 
+## E-ink: `GPIO busy` — GhostRoll still running
+
+If diagnostics show `ghostroll-eink-waveshare213v4.py` or `ghostroll-watch.service`, GhostRoll (SD ingest) owns the HAT:
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/free_eink_for_ambient.sh" | bash
+```
+
+Then test e-ink. Re-enable GhostRoll when you need it: `sudo systemctl enable --now ghostroll-watch.service`.
+
 ## E-ink: `GPIO busy` after another project on this Pi (e.g. ingest)
 
 A previous app on the same Pi often leaves **systemd units**, **Python processes**, or a **second copy of `waveshare_epd`** installed under `/usr/local`. A one-shot `kill-ingest` (or similar) may stop running processes but still leave:

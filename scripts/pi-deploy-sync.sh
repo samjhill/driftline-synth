@@ -39,7 +39,8 @@ eink_status() {
         export FIRST_BOOT_TRACK=1
         export FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}"
       fi
-      EINK_FORCE=1 EINK_LOG=/var/log/pi-ambient-synth-eink.log \
+      sudo -u pi env EINK_FORCE=1 EINK_LOG=/var/log/pi-ambient-synth-eink.log \
+        HOME=/home/pi INSTALL_DIR="$INSTALL_DIR" \
         "$boot_disp" "$phase" "$title" "$subtitle" "$detail" || true
       return 0
     fi

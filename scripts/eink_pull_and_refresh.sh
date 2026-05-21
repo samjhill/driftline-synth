@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=10
+EINK_REFRESH_VERSION=11
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -113,13 +113,30 @@ force_free_gpio() {
   sleep 2
 }
 
+wait_deploy_idle() {
+  local i
+  for i in $(seq 1 45); do
+    if ! systemctl is-active pi-ambient-synth-deploy.service 2>/dev/null | grep -qE '^(active|activating)'; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "WARN: deploy.service still active — e-ink may race" >&2
+}
+
 stop_eink_clients() {
   echo "==> Stopping services that may hold e-ink GPIO..."
+  sudo systemctl stop ghostroll-watch.service 2>/dev/null || true
+  sudo pkill -f ghostroll-eink-waveshare 2>/dev/null || true
   sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
   sudo systemctl stop \
     pi-ambient-synth \
     pi-ambient-synth-deploy.service \
     pi-ambient-synth-network-announce.service 2>/dev/null || true
+  if [[ "${STOP_PISUGAR:-0}" == "1" ]]; then
+    sudo systemctl stop pisugar-server 2>/dev/null || true
+  fi
+  wait_deploy_idle
   sleep 2
   force_free_gpio
 }
@@ -177,7 +194,7 @@ run_boot_display() {
 }
 
 if ! run_boot_display; then
-  echo "WARN: e-ink update failed after 3 attempts — see log below" >&2
+  echo "WARN: e-ink update failed — see log below" >&2
 fi
 
 echo "--- /var/log/pi-ambient-synth-eink.log (last 12 lines) ---"
