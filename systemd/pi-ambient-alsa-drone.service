@@ -1,0 +1,18 @@
+[Unit]
+Description=Pi Ambient Synth ALSA texture drone (plughw loop)
+After=sound.target
+# Runs alongside jackd+scsynth and pi-ambient-synth-midi (dmix on plughw:0,0).
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+Environment=HOME=/home/pi
+Environment=PI_DRONE_ALSA_DEVICE=plughw:0,0
+Environment=PI_DRONE_LEVEL=0.24
+ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/scripts/pi_alsa_texture_drone.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

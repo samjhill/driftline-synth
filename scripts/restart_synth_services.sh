@@ -104,6 +104,17 @@ if [[ "$midi_ok" -ne 1 ]]; then
   echo "WARN: pi-ambient-synth-midi.service not active after ${MIDI_WAIT_SEC}s" >&2
   journalctl -u pi-ambient-synth-midi -n 15 --no-pager >&2 || true
 fi
+
+if [[ -f "$INSTALL_DIR/systemd/pi-ambient-alsa-drone.service" ]] \
+  && [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
+  && grep -q 'AUDIO_MODE=ambient' /etc/pi-ambient-synth/audio-mode.conf 2>/dev/null; then
+  sudo cp "$INSTALL_DIR/systemd/pi-ambient-alsa-drone.service" /etc/systemd/system/ 2>/dev/null || true
+  sudo systemctl daemon-reload
+  sudo systemctl enable pi-ambient-alsa-drone.service 2>/dev/null || true
+  sudo systemctl restart pi-ambient-alsa-drone.service 2>/dev/null || true
+  log "pi-ambient-alsa-drone restarted (continuous pad on plughw)"
+fi
+
 systemctl is-active supercollider.service pi-ambient-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
 if [[ "${PI_SKIP_DEPLOY_TIMER:-0}" != "1" ]]; then
   sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true

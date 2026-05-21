@@ -33,6 +33,9 @@ install_sc_systemd_units() {
     sudo cp "$root/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/
     sudo systemctl enable pi-ambient-synth-midi.service 2>/dev/null || true
   fi
+  if [[ -f "$root/systemd/pi-ambient-alsa-drone.service" ]]; then
+    sudo cp "$root/systemd/pi-ambient-alsa-drone.service" /etc/systemd/system/
+  fi
   sudo mkdir -p /etc/systemd/system/supercollider.service.d
   sudo tee /etc/systemd/system/supercollider.service.d/audio.conf >/dev/null <<EOF
 [Service]

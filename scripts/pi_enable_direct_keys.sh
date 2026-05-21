@@ -13,7 +13,9 @@ else
 fi
 
 echo "==> direct_keys mode enabled ($CONF)"
-echo "==> stopping SuperCollider/JACK (frees headphone jack for aplay)"
+echo "==> stopping SuperCollider/JACK and ALSA drone (frees headphone jack for aplay)"
+sudo systemctl stop pi-ambient-alsa-drone.service 2>/dev/null || true
+sudo systemctl disable pi-ambient-alsa-drone.service 2>/dev/null || true
 sudo systemctl stop supercollider.service pi-ambient-synth.service 2>/dev/null || true
 pkill -x jackd scsynth sclang 2>/dev/null || true
 sleep 1

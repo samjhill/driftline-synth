@@ -50,7 +50,16 @@ else
 fi
 
 sleep 2
+if [[ -f "$INSTALL_DIR/systemd/pi-ambient-alsa-drone.service" ]]; then
+  sudo cp "$INSTALL_DIR/systemd/pi-ambient-alsa-drone.service" /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable pi-ambient-alsa-drone.service 2>/dev/null || true
+  sudo systemctl restart pi-ambient-alsa-drone.service 2>/dev/null || true
+  sleep 1
+  systemctl is-active pi-ambient-alsa-drone.service 2>/dev/null && echo "==> ALSA texture drone active (plughw)"
+fi
+
 if [[ -x "$INSTALL_DIR/scripts/prove_ambient_engine_pi.sh" ]]; then
   "$INSTALL_DIR/scripts/prove_ambient_engine_pi.sh" || true
 fi
-echo "==> Listen on 3.5 mm jack for startup chime + texture drone; KeyStep sends OSC notes."
+echo "==> Listen on 3.5 mm jack: continuous pad (ALSA drone) + KeyStep blips; SC engine on JACK if audible."
