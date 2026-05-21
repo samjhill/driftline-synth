@@ -68,10 +68,10 @@ If bare `speaker-test` fails with **`Playback open error: -524`**, the broken AL
 
 ```bash
 sudo systemctl stop supercollider   # free the sound card
-speaker-test -D plughw:0,0 -r 44100 -t pink -c 2 -l 1
+python3 ~/pi-ambient-synth/scripts/play_headphone_test.py -D plughw:0,0
 ```
 
-(`-t wav` uses 48 kHz system WAV files and warns on 44.1 kHz; **`-t pink`** generates noise at the requested rate.)
+(`setup_pi_audio.sh` uses this by default — a soft tone that slowly pans left ↔ right. Fallback: `speaker-test -D plughw:0,0 -r 44100 -t pink -c 2 -l 1`.)
 
 `setup_pi_audio.sh` installs `/etc/asound.conf` so `default` maps to **card 0 (Headphones)** and sets `SC_AUDIO_DEVICE=plughw:0,0` for SuperCollider.
 

@@ -60,12 +60,18 @@ if systemctl is-active supercollider.service &>/dev/null; then
   sudo systemctl stop supercollider.service 2>/dev/null || true
 fi
 
-echo "==> speaker-test on $ALSA_DEV @ 44100 Hz (pink noise — not -t wav; system WAVs are 48 kHz)"
-if speaker-test -D "$ALSA_DEV" -r 44100 -t pink -c 2 -l 1; then
-  echo "    OK — headphone jack produced audio"
+CHILL_TEST="$ROOT/scripts/play_headphone_test.py"
+echo "==> Headphone playback test on $ALSA_DEV (gentle stereo pan tone, ~6 s)"
+if [[ -f "$CHILL_TEST" ]]; then
+  if python3 "$CHILL_TEST" -D "$ALSA_DEV" -r 44100 -d 6; then
+    :
+  else
+    echo "    WARN: chill test failed — falling back to speaker-test pink noise"
+    speaker-test -D "$ALSA_DEV" -r 44100 -t pink -c 2 -l 1 || true
+  fi
 else
-  echo "    WARN: speaker-test failed — try: speaker-test -D $ALSA_DEV -r 44100 -t pink -c 2 -l 1"
-  echo "    If SuperCollider was using the card, it was stopped for this test."
+  echo "    (play_headphone_test.py missing — using speaker-test pink noise)"
+  speaker-test -D "$ALSA_DEV" -r 44100 -t pink -c 2 -l 1 || true
 fi
 
 echo ""
