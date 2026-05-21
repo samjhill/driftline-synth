@@ -3,6 +3,7 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
+var port;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -195,7 +196,7 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 	});
 };
 
-var port = 57120;
+port = 57120;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~configureServerAudio.();
