@@ -8,7 +8,8 @@ set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
-REF="${GITHUB_REF:-main}"
+# Default SHA pins fetched tree (override: GITHUB_REF=main or a branch name).
+REF="${GITHUB_REF:-a58ae6e}"
 LOG="/var/log/pi-ambient-synth-jack-hotfix.log"
 
 log() { echo "$(date -Iseconds) [jack-hotfix] $*" | tee -a "$LOG"; }
