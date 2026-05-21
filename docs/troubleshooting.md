@@ -134,17 +134,25 @@ The page should then show a 7–12 character Git commit id (e.g. `281a96c`).
 
 If the deploy log repeats `Mode=sync source=boot` and `Rsync from boot`, the Pi was re-loading **boot** `deploy.conf` on top of `/etc/pi-ambient-synth/deploy.conf` (fixed in recent `pi-deploy-sync.sh`). Until GitHub pull runs, `supercollider.service` may still point at bare `sclang` (no headless Qt) and crash with `signal=ABRT`.
 
-On the Pi:
+On the Pi (recommended — fetches latest scripts from GitHub even if the SD copy is stale):
 
 ```bash
-cat /etc/pi-ambient-synth/deploy.conf   # should show DEPLOY_SOURCE=github
+curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/recover_pi_from_github.sh | bash
+```
+
+Then verify:
+
+```bash
+systemctl cat supercollider.service | grep ExecStart   # run_sclang_engine.sh
+sudo journalctl -u supercollider -n 30 --no-pager     # OSC port 57120
+curl -s http://127.0.0.1:8080/api/status | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deploy_sha'), d.get('midi',{}).get('label'))"
+```
+
+If you already have current scripts on disk:
+
+```bash
 sudo systemctl stop pi-ambient-synth-deploy.timer
-rm -f ~/pi-ambient-synth/.deploy_sha /var/lib/pi-ambient-synth/last_deploy_sha
-bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
-sudo systemctl start pi-ambient-synth-deploy.service
-sleep 90
-systemctl cat supercollider.service | grep ExecStart   # should use run_sclang_engine.sh
-sudo journalctl -u supercollider -n 30 --no-pager
+bash ~/pi-ambient-synth/scripts/recover_pi_from_github.sh
 ```
 
 Look for `Pi Ambient Synth listening on OSC port 57120` in the journal.

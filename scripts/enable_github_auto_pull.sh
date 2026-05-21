@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Switch a running Pi from boot-SD-only deploys to GitHub auto-pull (latest main).
-# Run on the Pi: bash /home/pi/pi-ambient-synth/scripts/enable_github_auto_pull.sh
+# Prefer recover when boot loop left old code:
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/recover_pi_from_github.sh | bash
+# Or (if scripts are already current): bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
 set -euo pipefail
 
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
