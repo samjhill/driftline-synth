@@ -14,6 +14,7 @@ Environment=PI_AMBIENT_ROOT=/home/pi/pi-ambient-synth
 Environment=SC_JACK_DEFAULT_INPUTS=
 Environment=SC_JACK_DEFAULT_OUTPUTS=
 Environment=JACK_NO_AUDIO_RESERVATION=1
+Environment=JACK_NO_START_SERVER=1
 # ALSA output (Pi headphone jack). "default" fails on headless Bookworm (error -524).
 Environment=SC_AUDIO_DEVICE=hw:0,0
 Environment=SC_HEADLESS_ALSA=1

@@ -11,8 +11,9 @@ export QT_QPA_PLATFORM=offscreen
 unset DISPLAY
 export SC_JACK_DEFAULT_INPUTS="${SC_JACK_DEFAULT_INPUTS:-}"
 export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
-# Prevent scsynth from spawning JACK to grab hw:0 on headless Pi.
+# External jackd from start_scsynth_alsa.sh; do not let scsynth spawn jackdmp.
 export JACK_NO_AUDIO_RESERVATION="${JACK_NO_AUDIO_RESERVATION:-1}"
+export JACK_NO_START_SERVER="${JACK_NO_START_SERVER:-1}"
 # ALSA device name from `aplay -L` (e.g. plughw:0,0). Empty makes scsynth try JACK.
 export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 export SC_HEADLESS_ALSA="${SC_HEADLESS_ALSA:-1}"

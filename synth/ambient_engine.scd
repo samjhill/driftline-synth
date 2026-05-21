@@ -51,23 +51,23 @@ patchParams[\root_note] = 48;
 	// Pi scsynth+JACK often locks to 48000; match to avoid silent or wrong-rate output.
 	opt.sampleRate = 48000;
 	opt.device = dev;
-	"SC_AUDIO_DEVICE=% (ALSA — not JACK)".format(dev).postln;
+	"SC_AUDIO_DEVICE=% (jackd ALSA device; scsynth is JACK client)".format(dev).postln;
 	dev;
 };
 
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-alsaExternal)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackExternal)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
-	// scsynth started by scripts/start_scsynth_alsa.sh (-a alsa, no JACK)
+	// scsynth started by scripts/start_scsynth_alsa.sh (jackd + JACK client)
 	s.options.booting = false;
 	s.sync;
 	if(s.serverRunning == true, {
-		("scsynth connected (external ALSA) — device: %, rate: %".format(
+		("scsynth connected (external jackd) — device: %, rate: %".format(
 			~audioDevice, s.serverSampleRate
 		)).postln;
 	}, {

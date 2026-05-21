@@ -85,18 +85,16 @@ sudo systemctl restart supercollider pi-ambient-synth
 sudo journalctl -u supercollider -n 30 --no-pager
 ```
 
-3. **JACK** — if the journal shows `JACK server starting` / `could not initialize audio`, scsynth is trying JACK instead of ALSA. Stop other users of the card, disable jackd2, and use explicit ALSA boot (`s.boot("plughw:0,0")` in current `ambient_engine.scd`):
+3. **JACK / scsynth crash** — On Pi **SC 3.13**, `scsynth -H hw:0` still embeds **jackdmp**, prints `SuperCollider 3 server ready`, then dies with `JackTemporaryException` / `JackEngine::XRun`. Fix: start **our** `jackd` on ALSA first, then `scsynth` as a JACK client (`scripts/start_scsynth_alsa.sh` does this). Do **not** use systemd `jackd2` (wrong config); do stop PipeWire/Pulse so ALSA is free:
 
 ```bash
-sudo systemctl stop jackd2 pi-ambient-synth 2>/dev/null || true
-sudo systemctl disable jackd2 2>/dev/null || true
+sudo systemctl stop jackd2 pipewire pipewire-pulse 2>/dev/null || true
 bash ~/pi-ambient-synth/scripts/setup_pi_audio.sh
-sudo cp ~/pi-ambient-synth/systemd/supercollider.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl restart supercollider
+~/pi-ambient-synth/scripts/start_scsynth_alsa.sh
+tail -30 /tmp/scsynth-alsa-start.log   # want: jackd ready + scsynth ready (no JackTemporaryException)
 ```
 
-`jackd2` must **not** be running (it grabs ALSA). `setup_pi_audio.sh` disables it.
+If XRuns persist, try larger buffers: `SC_JACK_PERIOD=4096 SC_JACK_NPERIODS=3 ~/pi-ambient-synth/scripts/start_scsynth_alsa.sh`
 
 4. **Wrong ALSA device** — if HDMI is default, force the jack:
 
@@ -144,7 +142,7 @@ Only restart systemd after smoke passes:
 sudo systemctl restart supercollider && sleep 20 && sudo systemctl restart pi-ambient-synth
 ```
 
-Engine file must contain build marker `sc313-alsaExternal` (external ALSA scsynth). On SC 3.13 Pi, never use C-style `if(x) { }`, `&&`/`||` in `if` tests, or `if(x and: { ... }, ...)` (and:/or: return non-Boolean values).
+Engine file must contain build marker `sc313-jackExternal` (external jackd + scsynth). On SC 3.13 Pi, never use C-style `if(x) { }`, `&&`/`||` in `if` tests, or `if(x and: { ... }, ...)` (and:/or: return non-Boolean values).
 
 7. Volume in `config/default.yaml` (`audio.default_volume`, default `0.65`).
 

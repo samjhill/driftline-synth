@@ -7,7 +7,7 @@ command -v scsynth || true
 scsynth -v 2>&1 | head -3 || true
 echo "--- scsynth --help (grep -H/-R/-a) ---"
 scsynth --help 2>&1 | grep -E '^-|^  -' | head -40 || true
-echo "(Pi SC 3.13 typically has -H and -R only, not -a audio driver)"
+echo "(Pi SC 3.13: -H embeds JACK; start_scsynth_alsa.sh uses external jackd + scsynth client)"
 
 echo "==> ALSA"
 aplay -l 2>/dev/null || true
