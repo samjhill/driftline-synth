@@ -128,23 +128,20 @@ if bl="$(boot_log_dir)"; then
 fi
 
 run_display() {
-  local -a eink_env=(
-    PYTHONPATH="$src"
-    HOME=/home/pi
-    GPIOZERO_PIN_FACTORY=lgpio
-    EINK_FORCE=1
-  )
-  if id -u pi &>/dev/null && [[ "$(id -un)" != "pi" ]]; then
-    sudo -u pi -H env "${eink_env[@]}" \
-      bash -lc "cd /home/pi && rm -f .lgd-* 2>/dev/null; exec \"$py\" \"$script\" ${cfg[*]} $step_arg $total_arg \"$phase\" \"$title\" \"$subtitle\" \"$detail\""
+  local display_timeout="${EINK_DISPLAY_TIMEOUT:-50}"
+  if [[ "$(id -un)" != "pi" ]]; then
+    echo "WARN: e-ink expects user pi (got $(id -un)); GPIO may fail" >&2
+  fi
+  export PYTHONPATH="$src" HOME=/home/pi GPIOZERO_PIN_FACTORY=lgpio EINK_FORCE=1
+  cd /home/pi || return 1
+  rm -f .lgd-* 2>/dev/null || true
+  if command -v timeout &>/dev/null; then
+    timeout --kill-after=5 "${display_timeout}" \
+      "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
+      "$phase" "$title" "$subtitle" "$detail"
   else
-    (
-      export "${eink_env[@]}"
-      cd /home/pi
-      rm -f .lgd-* 2>/dev/null || true
-      exec "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
-        "$phase" "$title" "$subtitle" "$detail"
-    )
+    "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
+      "$phase" "$title" "$subtitle" "$detail"
   fi
 }
 

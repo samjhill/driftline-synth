@@ -29,6 +29,7 @@
 
 
 import logging
+import time
 from . import epdconfig
 
 # Display resolution
@@ -135,10 +136,13 @@ class EPD:
     function :Wait until the busy_pin goes LOW
     parameter:
     '''
-    def ReadBusy(self):
+    def ReadBusy(self, timeout_sec=20):
         logger.debug("e-Paper busy")
-        while(epdconfig.digital_read(self.busy_pin) == 1):      # 0: idle, 1: busy
-            epdconfig.delay_ms(10)  
+        deadline = time.time() + timeout_sec
+        while epdconfig.digital_read(self.busy_pin) == 1:  # 0: idle, 1: busy
+            if time.time() >= deadline:
+                raise TimeoutError("e-Paper busy pin did not clear")
+            epdconfig.delay_ms(10)
         logger.debug("e-Paper busy release")
 
     '''

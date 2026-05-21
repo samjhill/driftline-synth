@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=9
+EINK_REFRESH_VERSION=10
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -107,15 +107,9 @@ if [[ ! -x "$INSTALL_DIR/scripts/boot_display.sh" ]]; then
 fi
 
 force_free_gpio() {
-  local dev
-  echo "==> Releasing kernel GPIO holders..."
-  sudo pkill -f '/home/pi/pi-ambient-synth.*(main\.py|show_status\.py)' 2>/dev/null || true
-  sudo pkill -f 'boot_display\.sh' 2>/dev/null || true
-  sleep 1
-  for dev in /dev/gpiochip* /dev/gpiomem*; do
-    [[ -e "$dev" ]] || continue
-    sudo fuser -k "$dev" 2>/dev/null || true
-  done
+  echo "==> Releasing GPIO holders (stop synth, no fuser)..."
+  sudo pkill -f '/home/pi/pi-ambient-synth.*main\.py' 2>/dev/null || true
+  sudo pkill -f 'show_status\.py' 2>/dev/null || true
   sleep 2
 }
 
@@ -149,31 +143,32 @@ release_eink_gpio() {
   local py
   py="$(eink_python)"
   [[ -n "$py" ]] || return 0
-  (
-    export HOME=/home/pi
-    export GPIOZERO_PIN_FACTORY=lgpio
-    cd /home/pi
-    rm -f /home/pi/.lgd-* ./.lgd-* 2>/dev/null || true
-    PYTHONPATH="$INSTALL_DIR/src" "$py" - <<'PY'
-from config_loader import load_config
-from eink_display import EInkDisplay
-EInkDisplay(load_config()).release()
-PY
-  ) 2>/dev/null || true
+  local rel_cmd=(
+    env HOME=/home/pi GPIOZERO_PIN_FACTORY=lgpio PYTHONPATH="$INSTALL_DIR/src"
+    "$py" -c "from config_loader import load_config; from eink_display import EInkDisplay; EInkDisplay(load_config()).release()"
+  )
+  if command -v timeout &>/dev/null; then
+    timeout 15 "${rel_cmd[@]}" 2>/dev/null || true
+  else
+    "${rel_cmd[@]}" 2>/dev/null || true
+  fi
   sleep 1
 }
 
 run_boot_display() {
   local attempt rc=1
+  local display_timeout="${EINK_DISPLAY_TIMEOUT:-50}"
   stop_eink_clients
-  for attempt in 1 2 3; do
-    if EINK_FORCE=1 "$INSTALL_DIR/scripts/boot_display.sh" \
+  for attempt in 1 2; do
+    echo "==> E-ink display attempt $attempt (max ${display_timeout}s)..."
+    if EINK_FORCE=1 EINK_DISPLAY_TIMEOUT="$display_timeout" \
+      "$INSTALL_DIR/scripts/boot_display.sh" \
       "$PHASE" "$TITLE" "$SUBTITLE" "$DETAIL"; then
       return 0
     fi
     rc=1
-    if [[ "$attempt" -lt 3 ]]; then
-      echo "==> E-ink attempt $attempt failed; releasing GPIO and retrying..."
+    if [[ "$attempt" -lt 2 ]]; then
+      echo "==> Attempt $attempt failed; releasing GPIO..."
       release_eink_gpio
       force_free_gpio
     fi
