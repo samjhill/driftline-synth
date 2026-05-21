@@ -43,9 +43,9 @@ patchParams[\root_note] = 48;
 	var env = getenv("SC_AUDIO_DEVICE");
 	// hw:0,0 — plughw:0,0 can make JACK report client name '0,0' and break sclang↔scsynth link.
 	var dev = "hw:0,0";
-	if(env.notNil) {
-		if(env.size > 0) { dev = env };
-	};
+	if(env.isNil.not, {
+		if(env.size > 0, { dev = env });
+	});
 	opt.numOutputBusChannels = 2;
 	opt.numInputBusChannels = 2;
 	// Pi scsynth+JACK often locks to 48000; match to avoid silent or wrong-rate output.
@@ -56,19 +56,19 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc313-nestedIf)".postln;
+"Pi Ambient Synth engine script loading (build sc313-safeIf)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 Server.killAll;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-if(s.serverRunning == true, {
+if(s.serverRunning.asBoolean, {
 	s.quit;
 	s.sync;
 });
 "Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 s.boot(~audioDevice);
 s.sync;
-if(s.serverRunning == true, {
+if(s.serverRunning.asBoolean, {
 	("scsynth running — device: %, rate: %, out ch: %".format(
 		s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
 	)).postln;
@@ -298,7 +298,7 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		};
 };
 
-if(s.serverRunning == true, {
+if(s.serverRunning.asBoolean, {
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 
@@ -326,11 +326,15 @@ OSCdef(\piSet, { |msg|
 			masterVol = val;
 			~textureAmp.(val);
 		}, {
-			if((key == \name) or: { key == \scale_name }, {
+			if(key == \name, {
 				// Python patch metadata — not a synth float param
 			}, {
-				if(val.isKindOf(String), { val = val.asString.asFloat });
-				~setParam.(key, val);
+				if(key == \scale_name, {
+					// Python patch metadata — not a synth float param
+				}, {
+					if(val.isKindOf(String), { val = val.asString.asFloat });
+					~setParam.(key, val);
+				});
 			});
 		});
 	}, \pi_synth_set);
@@ -396,12 +400,12 @@ OSCdef(\piMorphTime, { |msg|
 	OSCdef(\piCompanion, { |msg|
 		companionOn = msg[1] > 0;
 		if(companionOn, {
-			if(companionSynth.isNil) {
+			if(companionSynth.isNil, {
 				companionSynth = Synth.tail(synthGroup, \piCompanion, [
 					\root, textureRoot,
 					\density, (patchParams[\texture_density] ? 0.5) * 0.4
 				]);
-			};
+			});
 		}, {
 			if(companionSynth.notNil, {
 				companionSynth.set(\gate, 0);
@@ -437,7 +441,7 @@ OSCdef(\piMorphTime, { |msg|
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
 	var amp = msg[2] ?? 0.55;
-	if(s.serverRunning != true, {
+	if(s.serverRunning.asBoolean.not, {
 		"pi_test_beep: scsynth not running".postln;
 	}, {
 		Synth(\piAmbientVoice, [

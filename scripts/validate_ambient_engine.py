@@ -101,6 +101,14 @@ def validate(path: Path) -> list[str]:
             errors.append(
                 f"line {i}: use 'or:' not '||' inside if() on SC 3.13"
             )
+        if re.search(r"if\([^,)]+\)\s*\{", line):
+            errors.append(
+                f"line {i}: use if(cond, {{ ... }}) not C-style if(cond) {{ ... }} in SC"
+            )
+        if re.search(r"if\([^)]*\bor:\s*\{", line):
+            errors.append(
+                f"line {i}: do not use if(x or: {{ ... }}, ...) as test — nest if() instead"
+            )
         if re.search(r"msg\[\d+\]\s*\?\s*msg\[\d+\]\s*:", line):
             errors.append(f"line {i}: JS ternary invalid in SC — use msg[n] ?? default")
         if re.search(r"\bTWhiteNoise\.", line):

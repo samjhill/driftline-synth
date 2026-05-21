@@ -123,6 +123,29 @@ cd ~/pi-ambient-synth
 
 9. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
 
+### Fast engine iteration (avoid 50s systemd loops)
+
+On the **Pi** after updating `ambient_engine.scd`:
+
+```bash
+~/pi-ambient-synth/scripts/engine_smoke_pi.sh --restart
+# log: /tmp/pi-ambient-engine-smoke.log — pass = ENGINE_TEST ok, no ERROR/Boolean
+```
+
+From your **Mac** (rsync + smoke over SSH):
+
+```bash
+PI_HOST=pi@192.168.1.64 ./scripts/push_engine_to_pi.sh
+```
+
+Only restart systemd after smoke passes:
+
+```bash
+sudo systemctl restart supercollider && sleep 20 && sudo systemctl restart pi-ambient-synth
+```
+
+Engine file must contain build marker `sc313-safeIf`. On SC 3.13 Pi, never use C-style `if(x) { }`, `&&`/`||` in `if` tests, or `if(x and: { ... }, ...)` (and:/or: return non-Boolean values).
+
 7. Volume in `config/default.yaml` (`audio.default_volume`, default `0.65`).
 
 ## SuperCollider won't boot
