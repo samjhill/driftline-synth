@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Diagnose e-ink / GPIO conflicts (e.g. after another project on the same Pi).
+#   curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/diagnose_eink_gpio.sh" | bash
 #   bash ~/pi-ambient-synth/scripts/diagnose_eink_gpio.sh
 set -euo pipefail
 
@@ -13,6 +14,10 @@ echo ""
 
 echo "--- Groups (pi should include gpio, spi) ---"
 groups pi 2>/dev/null || groups
+echo ""
+
+echo "--- Ingest-related systemd units (if any) ---"
+systemctl list-units --all --no-pager 2>/dev/null | grep -i ingest || echo "(none)"
 echo ""
 
 echo "--- Services (ambient + common ingest names) ---"
