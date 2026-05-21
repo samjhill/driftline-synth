@@ -2,14 +2,14 @@
 # Pi SC 3.13: external jackd + scsynth JACK client (fixes JackTemporaryException from embedded jackdmp).
 #
 # Pin raw URLs to a commit (main CDN can lag). Latest jack+audio fix:
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/a58ae6e/scripts/pi_jack_scsynth_hotfix.sh | bash
-# Hotfix resolves GITHUB_REF from api.github.com when set to a branch name.
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/7018002/scripts/pi_jack_scsynth_hotfix.sh | bash
+# Override fetch SHA: GITHUB_REF=<commit> (default below is pinned, not main).
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 # Default SHA pins fetched tree (override: GITHUB_REF=main or a branch name).
-REF="${GITHUB_REF:-a58ae6e}"
+REF="${GITHUB_REF:-7018002}"
 LOG="/var/log/pi-ambient-synth-jack-hotfix.log"
 
 log() { echo "$(date -Iseconds) [jack-hotfix] $*" | tee -a "$LOG"; }
