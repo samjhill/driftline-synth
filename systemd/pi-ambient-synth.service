@@ -8,8 +8,11 @@ User=pi
 WorkingDirectory=/home/pi/pi-ambient-synth
 # E-ink SPI can SIGBUS when the panel busy pin sticks (see eink log); synth/MIDI still work without it.
 ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/src/main.py --no-eink
+Environment=PI_MIDI_MAIN_THREAD=1
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=6
 
 [Install]
 WantedBy=multi-user.target

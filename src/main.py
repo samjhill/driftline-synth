@@ -50,7 +50,7 @@ class PiAmbientSynth:
         )
         self.patch_gen = PatchGenerator(config)
         self.osc = OscClient(config)
-        self.visual = VisualGenerator(config)
+        self._visual: VisualGenerator | None = None
         self.eink = EInkDisplay(config)
         self.midi = MidiController(config)
         self.play = PlayTracker()
@@ -66,6 +66,12 @@ class PiAmbientSynth:
         self._last_battery_poll = 0.0
         self._last_charge_poll = 0.0
         self._battery_snapshot: BatterySnapshot | None = None
+
+    @property
+    def visual(self) -> VisualGenerator:
+        if self._visual is None:
+            self._visual = VisualGenerator(self.config)
+        return self._visual
 
     def _battery_for_display(self) -> BatterySnapshot | None:
         ps = self.config.get("pisugar", {})
@@ -416,8 +422,10 @@ class PiAmbientSynth:
         logger.info("Pi Ambient Synth running — Ctrl+C to exit")
         try:
             while self._running:
+                if self.midi.is_listening:
+                    self.midi.poll()
                 self._maybe_refresh_battery_display()
-                time.sleep(0.25)
+                time.sleep(0.002)
         except KeyboardInterrupt:
             pass
         finally:

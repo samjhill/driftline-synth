@@ -88,10 +88,10 @@ check_synth_service() {
   done
   state="$(systemctl is-active pi-ambient-synth.service 2>/dev/null || echo dead)"
   if [[ "$state" != "active" ]]; then
-    log "WARN: pi-ambient-synth is $state (continuing MIDI logic test)"
-    journalctl -u pi-ambient-synth -n 12 --no-pager 2>/dev/null | tail -8 | tee -a "$LOG" || true
-    return 1
+    fail "pi-ambient-synth is $state (SIGBUS? check journal)"
   fi
+  journalctl -u pi-ambient-synth -n 30 --no-pager --since "3 min ago" 2>/dev/null \
+    | grep -q 'status=7/BUS' && fail "pi-ambient-synth still SIGBUS in journal"
   journalctl -u pi-ambient-synth -n 40 --no-pager --since "10 min ago" 2>/dev/null \
     | grep -q 'MIDI listener started' \
     || log "WARN: no 'MIDI listener started' in synth journal (keyboard may still work after open)"

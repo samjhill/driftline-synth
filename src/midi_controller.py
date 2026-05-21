@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -251,21 +252,32 @@ class MidiController:
         if not self._port:
             raise RuntimeError("MIDI port not open")
         self._running = True
+        # Pi: background rtmidi thread can SIGBUS; poll from main loop instead.
+        if os.environ.get("PI_MIDI_MAIN_THREAD", "").strip() in ("1", "true", "yes"):
+            logger.info("MIDI listener on %s (main-thread poll)", self._port_name)
+            return
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         logger.info("MIDI listener started on %s", self._port_name)
 
+    def poll(self) -> None:
+        """Process pending MIDI (required when PI_MIDI_MAIN_THREAD=1)."""
+        if not self._running or self._port is None:
+            return
+        for msg in self._port.iter_pending():
+            self._handle_message(msg)
+
     def _run(self) -> None:
         assert self._port is not None
         while self._running:
-            for msg in self._port.iter_pending():
-                self._handle_message(msg)
+            self.poll()
             time.sleep(0.001)
 
     def stop(self) -> None:
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)
+            self._thread = None
         if self._port:
             self._port.close()
             self._port = None
