@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Pi SC 3.13: external jackd + scsynth JACK client (fixes JackTemporaryException from embedded jackdmp).
 #
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/pi_jack_scsynth_hotfix.sh | bash
-#
-# Optional: pin a commit (if main raw lags):
-#   GITHUB_REF=832ab0f curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/pi_jack_scsynth_hotfix.sh | bash
+# Pin raw URLs to a commit (main CDN can lag). Latest jack+audio fix:
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/a58ae6e/scripts/pi_jack_scsynth_hotfix.sh | bash
+# Hotfix resolves GITHUB_REF from api.github.com when set to a branch name.
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
