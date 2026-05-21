@@ -30,7 +30,12 @@ if [[ ! -f "$SCD" ]]; then
   exit 1
 fi
 
-grep -q 'sc313-alsaExternal' "$SCD" || echo "WARN: engine file may be stale (no sc313-alsaExternal marker)" >&2
+ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-alsaExternal}"
+if ! grep -q "$ENGINE_MARK" "$SCD"; then
+  found="$(grep -o 'build sc313-[^"]*' "$SCD" | head -1 || true)"
+  echo "WARN: engine stale — want $ENGINE_MARK, file has: ${found:-<no sc313 marker>}" >&2
+  echo "  curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/e810b35/synth/ambient_engine.scd -o $SCD" >&2
+fi
 
 echo "==> engine smoke: $SCD (timeout ${TIMEOUT}s, log $LOG)"
 rm -f /var/lib/pi-ambient-synth/sc-engine-ready 2>/dev/null || true

@@ -144,7 +144,7 @@ Only restart systemd after smoke passes:
 sudo systemctl restart supercollider && sleep 20 && sudo systemctl restart pi-ambient-synth
 ```
 
-Engine file must contain build marker `sc313-safeIf`. On SC 3.13 Pi, never use C-style `if(x) { }`, `&&`/`||` in `if` tests, or `if(x and: { ... }, ...)` (and:/or: return non-Boolean values).
+Engine file must contain build marker `sc313-alsaExternal` (external ALSA scsynth). On SC 3.13 Pi, never use C-style `if(x) { }`, `&&`/`||` in `if` tests, or `if(x and: { ... }, ...)` (and:/or: return non-Boolean values).
 
 7. Volume in `config/default.yaml` (`audio.default_volume`, default `0.65`).
 
