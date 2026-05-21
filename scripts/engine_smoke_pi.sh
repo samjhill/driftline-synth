@@ -26,6 +26,7 @@ if [[ "${1:-}" == "--restart" ]]; then
 fi
 if ! "$ROOT/scripts/start_scsynth_alsa.sh"; then
   echo "ERROR: start_scsynth_alsa.sh failed — see /tmp/scsynth-alsa-start.log" >&2
+  echo "Run: $ROOT/scripts/diagnose_scsynth_audio.sh" >&2
   exit 1
 fi
 
@@ -50,7 +51,7 @@ if command -v timeout &>/dev/null; then
     stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
   status=$?
 else
-  stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
+  env SC_HEADLESS_ALSA=1 SC_ENGINE_TEST=1 stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
   status=$?
 fi
 set -e
