@@ -184,7 +184,8 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		"SC_AUDIO_DEVICE=%".format(env).postln;
 		opt.device = env;
 	}, {
-		"SC_AUDIO_DEVICE unset — SuperCollider default ALSA device".postln;
+		opt.device = "plughw:0,0";
+		"SC_AUDIO_DEVICE unset — using plughw:0,0 (Pi headphone jack)".postln;
 	});
 };
 

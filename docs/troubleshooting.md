@@ -54,10 +54,20 @@ Re-plug the KeyStep USB data cable, then `sudo systemctl restart pi-ambient-synt
 
 ```bash
 bash ~/pi-ambient-synth/scripts/setup_pi_audio.sh
-speaker-test -t wav -c 2 -l 1
 ```
 
-If `speaker-test` is silent, fix Pi routing/volume before SuperCollider (`raspi-config` → Audio → Headphones, or plug headphones in before boot).
+If bare `speaker-test` fails with **`Playback open error: -524`**, the broken ALSA **`default`** device is usually PulseAudio/PipeWire on headless Pi OS. Use the headphone device explicitly:
+
+```bash
+sudo systemctl stop supercollider   # free the sound card
+speaker-test -D plughw:0,0 -r 44100 -t pink -c 2 -l 1
+```
+
+(`-t wav` uses 48 kHz system WAV files and warns on 44.1 kHz; **`-t pink`** generates noise at the requested rate.)
+
+`setup_pi_audio.sh` installs `/etc/asound.conf` so `default` maps to **card 0 (Headphones)** and sets `SC_AUDIO_DEVICE=plughw:0,0` for SuperCollider.
+
+If `speaker-test` is still silent, fix Pi routing/volume (`raspi-config` → Audio → Headphones, or plug headphones in before boot).
 
 2. **SuperCollider** — must be `active` and log `scsynth running` / `listening on OSC port 57120`:
 
