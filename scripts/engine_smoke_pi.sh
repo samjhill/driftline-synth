@@ -23,10 +23,11 @@ export JACK_NO_START_SERVER="${JACK_NO_START_SERVER:-1}"
 export SC_HEADLESS_ALSA=1
 stack_up() {
   pgrep -x jackd >/dev/null && pgrep -x scsynth >/dev/null || return 1
+  ls /dev/shm/jack* 1>/dev/null 2>&1 || return 1
   if command -v ss >/dev/null && ss -uln 2>/dev/null | grep -qE ':57110[[:space:]]'; then
     return 0
   fi
-  command -v jack_lsp >/dev/null && jack_lsp 2>/dev/null | grep -qi supercollider
+  command -v nc >/dev/null && nc -u -z -w1 127.0.0.1 57110 2>/dev/null
 }
 
 if [[ "${1:-}" == "--restart" ]]; then

@@ -2,7 +2,7 @@
 # Pi SC 3.13: external jackd + scsynth + sclang (SSH-safe: progress pings, optional phases).
 #
 # Full run (use tmux/screen if SSH is flaky):
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/e86b8aa/scripts/pi_jack_scsynth_hotfix.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/aa19495/scripts/pi_jack_scsynth_hotfix.sh | bash
 #
 # Split phases (env must apply to bash, not curl — use bash -s or env before bash):
 #   curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s fetch-only
@@ -18,7 +18,7 @@ case "${1:-}" in
   services-only|services) HOTFIX_SERVICES_ONLY=1 ;;
 esac
 
-PINNED_SHA="e86b8aa"
+PINNED_SHA="aa19495"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
@@ -49,10 +49,11 @@ resolve_ref() {
 
 stack_looks_up() {
   pgrep -x jackd >/dev/null && pgrep -x scsynth >/dev/null || return 1
+  ls /dev/shm/jack* 1>/dev/null 2>&1 || return 1
   if command -v ss >/dev/null && ss -uln 2>/dev/null | grep -qE ':57110[[:space:]]'; then
     return 0
   fi
-  command -v jack_lsp >/dev/null && jack_lsp 2>/dev/null | grep -qi supercollider
+  nc -u -z -w1 127.0.0.1 57110 2>/dev/null
 }
 
 free_alsa() {

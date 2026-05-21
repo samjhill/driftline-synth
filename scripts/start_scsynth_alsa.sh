@@ -52,22 +52,17 @@ port_open() {
 
 scsynth_ready() {
   pgrep -x scsynth >/dev/null || return 1
-  jack_ready || return 1
-  if jack_lsp 2>/dev/null | grep -qi supercollider; then
-    return 0
-  fi
-  return 1
+  port_open
 }
 
 scsynth_up() {
-  port_open || scsynth_ready
+  scsynth_ready
 }
 
+# Pi jackdmp 1.9: jack_lsp often segfaults — use process + shm socket only.
 jack_ready() {
-  if command -v jack_lsp >/dev/null && jack_lsp >/dev/null 2>&1; then
-    return 0
-  fi
-  return 1
+  pgrep -x jackd >/dev/null || return 1
+  ls /dev/shm/jack* 1>/dev/null 2>&1
 }
 
 stop_audio_stack() {
@@ -80,16 +75,17 @@ stop_audio_stack() {
 wait_jack() {
   local pid="$1"
   local i
-  for i in $(seq 1 80); do
+  sleep 0.8
+  for i in $(seq 1 40); do
     if ! kill -0 "$pid" 2>/dev/null; then
       return 1
     fi
     if jack_ready; then
       return 0
     fi
-    sleep 0.15
+    sleep 0.2
   done
-  return 2
+  kill -0 "$pid" 2>/dev/null
 }
 
 wait_scsynth() {
