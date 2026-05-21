@@ -9,6 +9,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 import sys
 from pathlib import Path
 
@@ -45,11 +47,25 @@ def show_status(
     config = load_config(config_path)
     if not config.get("eink", {}).get("enabled", True):
         return 0
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     display = EInkDisplay(config)
-    display.init()
+    if not display.init():
+        print("E-ink init failed — check SPI, gpiozero, vendor/waveshare", file=sys.stderr)
+        return 1
     renderer = StatusDisplay(config)
     img = renderer.render(phase, title, subtitle, detail, step=step, total_steps=total_steps)
-    display.show_image(img)
+    full = os.environ.get("EINK_FORCE") == "1" or phase in (
+        "boot",
+        "wifi",
+        "network",
+        "install",
+        "ready",
+        "failed",
+    )
+    try:
+        display.show_image(img, full_refresh=full)
+    finally:
+        display.release()
     return 0
 
 

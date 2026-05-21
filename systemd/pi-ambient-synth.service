@@ -1,6 +1,6 @@
 [Unit]
 Description=Pi Ambient Synth Controller
-After=supercollider.service
+After=supercollider.service pi-ambient-synth-network-announce.service
 Requires=supercollider.service
 
 [Service]

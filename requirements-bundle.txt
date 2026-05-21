@@ -1,0 +1,10 @@
+# Pure/portable wheels — pre-built into .venv on Mac (Docker arm64).
+# Pi-only GPIO packages come from vendor/wheels at install time (see requirements-pi.txt).
+mido
+python-rtmidi
+python-osc
+PyYAML
+Pillow
+numpy
+gpiozero
+colorzero

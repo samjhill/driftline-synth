@@ -3,6 +3,12 @@ app:
   log_level: "INFO"
   state_path: "./state/current_patch.json"
   favorites_path: "./state/favorites.json"
+  marker_dir: "/var/lib/pi-ambient-synth"
+
+monitor:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
 
 midi:
   preferred_input_keywords:
@@ -38,6 +44,7 @@ eink:
   rotate: 0
   update_on_reseed: true
   partial_refresh: false
+  full_refresh_boot: true
   show_text_labels: true
   clear_on_shutdown: false
 

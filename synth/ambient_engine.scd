@@ -382,4 +382,7 @@ fork {
 	NetAddr.localAddr.port = port;
 	"Pi Ambient Synth listening on OSC port %".format(port).postln;
 };
+
+// Block the main sclang thread so systemd Type=simple stays active (fork alone is not enough).
+while { true } { 1.wait };
 )

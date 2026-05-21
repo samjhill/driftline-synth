@@ -1,162 +1,167 @@
 # Pi Ambient Synth
 
-A headless Raspberry Pi generative ambient synthesizer controlled by an **Arturia KeyStep** over USB MIDI, with a **Waveshare 2.13" E-Ink** display showing a deterministic “patch sigil” for each curated sound scene.
+A small-box ambient music instrument: plug in power, connect a keyboard, and play calm, evolving sounds. No computer screen, no menus, no patch lists to scroll through.
 
-Power on → connect KeyStep → play immediately. No menus, no laptop required after setup.
+Each new “scene” gets its own abstract drawing on a small e-ink screen — like a postcard for that sound.
 
-## What It Is
+## What you get
 
-Two-process architecture:
+- **Instant play** — Power on, wait for boot, play keys. The Pi handles the rest.
+- **New landscapes on demand** — One button combo gives you a fresh sound world (still musical, not random noise).
+- **A quiet display** — Shows the name of the scene and a unique black-and-white “map” for it.
+- **Hands-on control** — An Arturia KeyStep keyboard (with arp/sequencer) is the whole interface.
 
-- **SuperCollider** — polyphonic synth, texture drone, delay, reverb, limiter
-- **Python** — MIDI, curated patch generation, OSC, e-ink visuals, state
+Good for: bedside ambient, living-room noodling, a dedicated object that isn’t another app.
 
-```text
-KeyStep (USB MIDI) → Python → OSC → SuperCollider → Audio
-                      ↓
-                 E-Ink display (patch sigil)
-```
+## What you need
 
-## Hardware
 
-| Item | Purpose |
-|------|---------|
-| Raspberry Pi 4B/5 | Brain |
-| Arturia KeyStep | Keys, arp, sequencer, transport |
-| USB data cable | KeyStep ↔ Pi (not power-only) |
-| Waveshare 2.13" E-Ink HAT V4 | Patch identity display |
-| USB audio interface or Pi jack | Output |
+| Thing                                                 | Why                                                  |
+| ----------------------------------------------------- | ---------------------------------------------------- |
+| **Raspberry Pi 4 or 5**                               | The brains (Pi 3 may work but is slower)             |
+| **Arturia KeyStep**                                   | Keys and transport buttons                           |
+| **USB cable (data, not charge-only)**                 | Connects keyboard to Pi                              |
+| **Speakers or headphones**                            | Pi headphone jack or a small USB audio interface     |
+| **Waveshare 2.13″ e-ink HAT** (optional but intended) | Shows the scene “sigil” — install on the GPIO header |
 
-See [docs/hardware_setup.md](docs/hardware_setup.md) for wiring.
 
 ```text
-     ┌──────────┐  USB   ┌─────────────┐
-     │ KeyStep  │───────▶│ Raspberry Pi│
-     └──────────┘        │  + E-Ink HAT│──▶ speakers
-                         └─────────────┘
+  KeyStep ──USB──▶ Raspberry Pi + e-ink hat ──▶ speakers
 ```
 
-## Install (Raspberry Pi)
+More wiring detail: [docs/hardware_setup.md](docs/hardware_setup.md)
 
-### Automatic (recommended)
+## How it works (simple version)
 
-On your Mac, with the SD card mounted as `bootfs`:
+Inside the Pi, two programs cooperate:
+
+1. **Sound engine** — Makes the actual audio (layers, reverb, gentle motion).
+2. **Helper** — Listens to the keyboard, picks new scenes, updates the display, saves your last sound.
+
+You only touch the KeyStep. The Pi is meant to stay out of the way.
+
+## First-time setup
+
+### Easiest path (Mac + microSD card)
+
+1. Flash Raspberry Pi OS onto the card (or use a card that already boots).
+2. On your Mac, with the card’s `bootfs` volume mounted, from this project folder run:
 
 ```bash
-chmod +x scripts/sync_to_sd_mac.sh scripts/pi-deploy-sync.sh
+chmod +x scripts/sync_to_sd_mac.sh
 ./scripts/sync_to_sd_mac.sh
 ```
 
-Eject, boot the Pi on Wi‑Fi. First boot installs; then the Pi **pulls from GitHub every 60s** and restarts services on new commits.
+That copies the synth, Wi‑Fi settings (from a local file you create — see below), and auto-install instructions. **Wi‑Fi passwords are not stored in GitHub** — they live only in `deploy/secrets/` on your Mac.
 
-**Day-to-day:** `git push` — hardware updates automatically. See [docs/deploy.md](docs/deploy.md).
+1. Eject the card, put it in the Pi, power on, connect speakers and the KeyStep.
+2. **First boot** — `sync_to_sd_mac.sh` pre-bundles the e-ink driver, Python wheels, and (if Docker is available) a full `.venv`, so install is mostly offline. Expect **~10–20 minutes** (mostly SuperCollider/apt). The green LED blinking is normal. The e-ink may show boot steps (`BOOT`, `WIFI`, `INSTALL`, etc.).
+3. When it’s ready, play the keyboard. If you need SSH: try `ssh pi@raspberrypi.local` (default password `raspberry` — change it).
 
-### Manual SSH install
+After setup, code updates can arrive from GitHub automatically about once a minute when you push changes. Details: [docs/deploy.md](docs/deploy.md).
+
+### Wi‑Fi file (one-time on your Mac)
 
 ```bash
-git clone <repo-url> ~/pi-ambient-synth
+cp deploy/network-config.example deploy/secrets/network-config.local
+# Edit deploy/secrets/network-config.local with your network name and password
+```
+
+Run `sync_to_sd_mac.sh` again whenever you change code or Wi‑Fi. It pre-downloads Pi **aarch64 Python wheels** onto the card (`vendor/wheels/`) so first boot skips slow PyPI downloads. Refresh with `FORCE_BUNDLE=1 ./scripts/sync_to_sd_mac.sh` (uses `pip3.11` from Homebrew).
+
+## Playing it
+
+
+| What you want                            | On the KeyStep (usual mapping)                   |
+| ---------------------------------------- | ------------------------------------------------ |
+| **Play normally**                        | Keys, arp, or sequencer — same as any synth      |
+| **New sound scene**                      | **SHIFT + PLAY**                                 |
+| **Save this scene as a favorite**        | **SHIFT + STOP**                                 |
+| **Bring back last favorite**             | Press **STOP** twice quickly                     |
+| **Living, slowly changing sound**        | **SHIFT + RECORD** (toggles “evolve”)            |
+| **Fog ↔ clear blend**                    | Mod wheel (CC1) — “weather”                      |
+| **Low keys = drone, high keys = melody** | Notes below middle C# (55) vs above — “duo” mode |
+
+
+If **SHIFT + button** doesn’t work, your KeyStep may not send Shift over USB. See [docs/troubleshooting.md](docs/troubleshooting.md) and run debug mode (developers section below).
+
+More detail on the fun features: [docs/fun-phase-1.md](docs/fun-phase-1.md), [docs/fun-phase-2.md](docs/fun-phase-2.md), [docs/fun-phase-3.md](docs/fun-phase-3.md).
+
+## Everyday use
+
+1. Power on the Pi.
+2. When Wi‑Fi connects, the e-ink shows **your Pi’s IP** (e.g. `192.168.1.50`).
+3. On a phone or laptop on the same network, open **`http://<that-ip>:8080/`** to monitor the synth (patch, services, logs). mDNS: `http://raspberrypi.local:8080/`.
+4. Play the KeyStep.
+
+The monitor has no password — for your home LAN only.
+
+You do **not** need a laptop connected while playing.
+
+## If something’s wrong
+
+
+| Symptom                         | Start here                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| Keyboard lights up but no sound | USB cable might be power-only — use a data cable                                      |
+| Can’t find Pi on network        | Check router device list; see [docs/troubleshooting.md](docs/troubleshooting.md)      |
+| E-ink stays blank               | Check HAT seated and SPI enabled — [docs/troubleshooting.md](docs/troubleshooting.md) |
+| New scene button does nothing   | [docs/troubleshooting.md](docs/troubleshooting.md) — MIDI debug                       |
+
+
+Full guide: [docs/usage.md](docs/usage.md)
+
+---
+
+## For developers
+
+Technical architecture, manual install, tests, and service units.
+
+### Architecture
+
+```text
+KeyStep (USB MIDI) → Python → OSC → SuperCollider → audio
+                      ↓
+                 E-ink (patch sigil)
+```
+
+### Manual install on the Pi
+
+```bash
+git clone git@github.com:samjhill/driftline-synth.git ~/pi-ambient-synth
 cd ~/pi-ambient-synth
 chmod +x install.sh scripts/run_dev.sh
 ./install.sh --enable-services
 sudo reboot
 ```
 
-Adjust paths in `systemd/*.service` if the repo lives outside `/home/pi/pi-ambient-synth`.
-
-## First Sound Test
-
-```bash
-# 1. Start engine
-sclang synth/ambient_engine.scd
-
-# 2. In another terminal
-python3 -m venv .venv && .venv/bin/pip install mido python-rtmidi python-osc PyYAML Pillow numpy
-.venv/bin/python scripts/test_osc.py
-```
-
-You should hear a test note. Then:
-
-```bash
-.venv/bin/python src/main.py --no-eink
-```
-
-Play the KeyStep.
-
-## MIDI Debug
-
-```bash
-.venv/bin/python scripts/list_midi_devices.py
-.venv/bin/python scripts/list_midi_devices.py --monitor
-.venv/bin/python src/main.py --debug-midi
-```
-
-## E-Ink Test (on Pi with HAT)
-
-```bash
-.venv/bin/python scripts/test_eink.py
-.venv/bin/python src/main.py --generate-visual /tmp/sigil.png
-```
-
-## Manual Run
+### Dev / test commands
 
 ```bash
 ./scripts/run_dev.sh --no-eink
-# or separately:
-sclang synth/ambient_engine.scd
-python src/main.py
+python scripts/list_midi_devices.py --monitor
+python src/main.py --debug-midi
+python src/main.py --panic
+pytest tests/ -v
 ```
 
-## Boot Startup
+### Boot services
 
 ```bash
 ./install.sh --enable-services
-sudo systemctl start supercollider pi-ambient-synth
 sudo systemctl status supercollider pi-ambient-synth
 ```
 
-Services restart automatically on crash.
-
-## Controls
-
-| Action | Mapping |
-|--------|---------|
-| Play notes | KeyStep keyboard / arp / seq |
-| New patch (reseed) | SHIFT + PLAY |
-| Save favorite | SHIFT + STOP |
-| Evolve mode | SHIFT + RECORD |
-| Panic | `python src/main.py --panic` |
-
-If Shift is not transmitted over MIDI, see [docs/troubleshooting.md](docs/troubleshooting.md).
-
-## Project Layout
+### Project layout
 
 ```text
-config/          YAML config and scales
-synth/           SuperCollider ambient_engine.scd
-src/             Python orchestration
-scripts/         Dev and hardware test scripts
-systemd/         Service units
-tests/           Unit tests
-docs/            Setup, usage, troubleshooting
-state/           Runtime patch persistence (gitignored)
+config/     Settings and scales
+synth/      SuperCollider engine
+src/        Python app
+scripts/    SD sync, tests, deploy
+docs/       Setup and troubleshooting
 ```
-
-## Tests
-
-```bash
-.venv/bin/pip install pytest PyYAML Pillow numpy
-.venv/bin/pytest tests/ -v
-```
-
-## Troubleshooting
-
-| Problem | See |
-|---------|-----|
-| No MIDI | [troubleshooting.md](docs/troubleshooting.md#keystep-lights-up-but-no-midi) |
-| No sound | [troubleshooting.md](docs/troubleshooting.md#no-sound) |
-| E-ink blank | [troubleshooting.md](docs/troubleshooting.md#e-ink-display-does-not-update) |
-| Shift combos | [troubleshooting.md](docs/troubleshooting.md#random--shift-button-combo-not-detected) |
 
 ## License
 
-MIT — use and modify for your own ambient appliance.
+MIT — use and adapt for your own projects.

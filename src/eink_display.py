@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from PIL import Image
@@ -13,26 +14,59 @@ logger = logging.getLogger(__name__)
 
 _WAVESHARE_AVAILABLE = False
 _epd_module = None
+_EPD_CLASS_NAMES = ("epd2in13_V4", "epd2in13_V3", "epd2in13")
 
-try:
-    from waveshare_epd import epd2in13_V4
 
-    _epd_module = epd2in13_V4
-    _WAVESHARE_AVAILABLE = True
-except ImportError:
-    try:
-        import sys
-        from pathlib import Path
+def _vendor_waveshare_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "vendor" / "waveshare"
 
-        vendor = Path(__file__).resolve().parent.parent / "vendor" / "waveshare"
-        if vendor.exists():
-            sys.path.insert(0, str(vendor))
-            from waveshare_epd import epd2in13_V4
 
-            _epd_module = epd2in13_V4
+def _purge_waveshare_modules() -> None:
+    import sys
+
+    vendor_root = str(_vendor_waveshare_path().resolve())
+    for key in list(sys.modules):
+        if not key.startswith("waveshare_epd"):
+            continue
+        mod = sys.modules.get(key)
+        mod_file = getattr(mod, "__file__", "") or ""
+        if mod_file and vendor_root not in mod_file:
+            del sys.modules[key]
+
+
+def _load_epd_modules() -> None:
+    global _WAVESHARE_AVAILABLE, _epd_module
+    import sys
+
+    vendor = _vendor_waveshare_path()
+    if vendor.is_dir():
+        vendor_str = str(vendor)
+        if vendor_str not in sys.path:
+            sys.path.insert(0, vendor_str)
+        _purge_waveshare_modules()
+
+    last_error: BaseException | None = None
+    for name in _EPD_CLASS_NAMES:
+        try:
+            mod = __import__(f"waveshare_epd.{name}", fromlist=[name])
+            _epd_module = getattr(mod, name)
             _WAVESHARE_AVAILABLE = True
-    except ImportError:
-        pass
+            mod_file = getattr(mod, "__file__", "")
+            logger.debug("Using Waveshare driver %s (%s)", name, mod_file)
+            return
+        except (ImportError, AttributeError, OSError) as e:
+            last_error = e
+            continue
+    _WAVESHARE_AVAILABLE = False
+    _epd_module = None
+    if last_error is not None:
+        vendor = _vendor_waveshare_path()
+        hint = (
+            f"vendor missing at {vendor}"
+            if not vendor.is_dir()
+            else "run scripts/ensure_waveshare_vendor.sh"
+        )
+        logger.warning("Waveshare driver load failed (%s); %s", last_error, hint)
 
 
 class EInkDisplay:
@@ -43,13 +77,18 @@ class EInkDisplay:
         self.height = eink.get("height", 122)
         self.rotate = eink.get("rotate", 0)
         self.partial_refresh = eink.get("partial_refresh", False)
+        self.full_refresh_boot = eink.get("full_refresh_boot", True)
         self._epd = None
         self._available = False
+        self._driver_name = ""
+        self._frame_count = 0
 
     def init(self) -> bool:
         if not self.enabled:
             logger.info("E-ink disabled in config")
             return False
+        if not _WAVESHARE_AVAILABLE or _epd_module is None:
+            _load_epd_modules()
         if not _WAVESHARE_AVAILABLE or _epd_module is None:
             logger.warning(
                 "Waveshare driver not available — display will use stub mode"
@@ -60,7 +99,8 @@ class EInkDisplay:
             self._epd = _epd_module.EPD()
             self._epd.init()
             self._available = True
-            logger.info("E-ink display initialized (2.13\" V4)")
+            self._driver_name = getattr(_epd_module, "__name__", "waveshare")
+            logger.info("E-ink display initialized (%s)", self._driver_name)
             return True
         except Exception as e:
             logger.warning("E-ink init failed: %s", e)
@@ -71,6 +111,21 @@ class EInkDisplay:
     def available(self) -> bool:
         return self._available and self._epd is not None
 
+    def _purge_panel(self) -> None:
+        """Full refresh (white → black → white) to clear ghosting from old images."""
+        if not self._epd:
+            return
+        try:
+            self._epd.init()
+            self._epd.Clear(0xFF)
+            time.sleep(0.1)
+            self._epd.Clear(0x00)
+            time.sleep(0.1)
+            self._epd.Clear(0xFF)
+            logger.info("E-ink full purge (ghost clear)")
+        except Exception as e:
+            logger.warning("E-ink purge failed: %s", e)
+
     def _prepare_image(self, image: Image.Image) -> Image.Image:
         if image.mode != "1":
             image = image.convert("1")
@@ -80,16 +135,26 @@ class EInkDisplay:
             image = image.rotate(self.rotate, expand=True)
         return image
 
-    def show_image(self, image: Image.Image) -> None:
+    def show_image(self, image: Image.Image, *, full_refresh: bool = False) -> None:
         image = self._prepare_image(image)
         if not self.available:
-            logger.debug("E-ink stub: would show %dx%d image", image.width, image.height)
+            logger.warning("E-ink stub: display not initialized — image not shown")
             return
+        import os
+
+        use_full = (
+            full_refresh
+            or os.environ.get("EINK_FORCE") == "1"
+            or (self.full_refresh_boot and self._frame_count == 0)
+        )
+        if use_full:
+            self._purge_panel()
         buf = self._epd.getbuffer(image)
         if self.partial_refresh and hasattr(self._epd, "displayPartial"):
             self._epd.displayPartial(buf)
         else:
             self._epd.display(buf)
+        self._frame_count += 1
 
     def show_patch(self, patch: Patch, image: Image.Image) -> None:
         self.show_image(image)
@@ -115,7 +180,23 @@ class EInkDisplay:
             self._epd.Clear(0xFF)
         logger.info("E-ink cleared")
 
-    def sleep(self) -> None:
-        if self.available:
+    def release(self) -> None:
+        """Deep-sleep panel and free GPIO/SPI for other tools."""
+        if not self._epd:
+            return
+        try:
             self._epd.sleep()
-            logger.info("E-ink sleep")
+        except Exception as e:
+            logger.warning("E-ink sleep failed: %s", e)
+        try:
+            from waveshare_epd import epdconfig
+
+            epdconfig.release_implementation()
+        except Exception as e:
+            logger.warning("E-ink GPIO release failed: %s", e)
+        self._epd = None
+        self._available = False
+        logger.info("E-ink released")
+
+    def sleep(self) -> None:
+        self.release()

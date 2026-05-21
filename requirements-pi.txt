@@ -1,0 +1,3 @@
+# Installed on the Pi from vendor/wheels (offline, seconds).
+spidev
+RPi.GPIO

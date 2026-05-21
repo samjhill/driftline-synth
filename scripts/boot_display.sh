@@ -6,6 +6,7 @@
 set -euo pipefail
 
 export EINK_FORCE=1
+EINK_LOG="${EINK_LOG:-/var/log/pi-ambient-synth-eink.log}"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 STEP_FILE="$MARKER_DIR/first_boot_step"
@@ -49,6 +50,31 @@ find_python() {
   command -v python3 || echo python3
 }
 
+find_src_path() {
+  if [[ -d "$INSTALL_DIR/src" ]]; then
+    echo "$INSTALL_DIR/src"
+    return 0
+  fi
+  local b
+  for b in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
+    if [[ -d "$b/src" ]]; then
+      echo "$b/src"
+      return 0
+    fi
+  done
+  return 1
+}
+
+boot_log_dir() {
+  for b in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
+    if [[ -d "$b" ]]; then
+      echo "$b/boot-logs"
+      return 0
+    fi
+  done
+  return 1
+}
+
 config_path() {
   if [[ -f "$INSTALL_DIR/config/default.yaml" ]]; then
     echo "$INSTALL_DIR/config/default.yaml"
@@ -64,18 +90,47 @@ config_path() {
   return 1
 }
 
-script="$(find_script)" || exit 0
+script="$(find_script)" || { echo "boot_display: show_status.py not found" >&2; exit 1; }
 py="$(find_python)"
+src="$(find_src_path)" || { echo "boot_display: src/ not found on SD or install dir" >&2; exit 1; }
+
+ensure_ws() {
+  local ws="$INSTALL_DIR/scripts/ensure_waveshare_vendor.sh"
+  if [[ ! -x "$ws" ]]; then
+    for b in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
+      if [[ -x "$b/scripts/ensure_waveshare_vendor.sh" ]]; then
+        ws="$b/scripts/ensure_waveshare_vendor.sh"
+        break
+      fi
+    done
+  fi
+  if [[ -x "$ws" ]]; then
+    mkdir -p "$(dirname "$EINK_LOG")" 2>/dev/null || true
+    bash "$ws" >>"$EINK_LOG" 2>&1 || true
+  fi
+}
+ensure_ws
 cfg=()
 if cfg_file="$(config_path)"; then
   cfg=(--config "$cfg_file")
 fi
 
+mkdir -p "$(dirname "$EINK_LOG")" 2>/dev/null || true
+if bl="$(boot_log_dir)"; then
+  mkdir -p "$bl" 2>/dev/null || true
+  EINK_LOG="$bl/eink.log"
+fi
+
 if id -u pi &>/dev/null; then
-  sudo -u pi env PYTHONPATH="$INSTALL_DIR/src" HOME=/home/pi \
+  sudo -u pi env PYTHONPATH="$src" HOME=/home/pi EINK_FORCE=1 \
     "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
-    "$phase" "$title" "$subtitle" "$detail" 2>/dev/null || true
+    "$phase" "$title" "$subtitle" "$detail" >>"$EINK_LOG" 2>&1 || {
+    echo "$(date -Iseconds) boot_display FAILED phase=$phase" >>"$EINK_LOG"
+  }
 else
-  "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
-    "$phase" "$title" "$subtitle" "$detail" 2>/dev/null || true
+  env PYTHONPATH="$src" EINK_FORCE=1 \
+    "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
+    "$phase" "$title" "$subtitle" "$detail" >>"$EINK_LOG" 2>&1 || {
+    echo "$(date -Iseconds) boot_display FAILED phase=$phase" >>"$EINK_LOG"
+  }
 fi
