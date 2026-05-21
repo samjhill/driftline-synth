@@ -333,7 +333,10 @@ def _midi_status_label(
         if snap.get("preferred_found") or snap.get("selected_port"):
             port = snap.get("selected_port") or "?"
             return f"Detected — {port} (synth not listening)", False
-        return "Not connected — synth has no MIDI input", False
+        if snap.get("device_present"):
+            port = snap.get("selected_port") or (snap.get("inputs") or ["?"])[0]
+            return f"Detected — {port} (synth could not open port)", False
+        return "Not connected — no MIDI ports (check KeyStep USB data cable)", False
     if snap.get("preferred_found"):
         port = snap.get("selected_port") or "?"
         return f"Detected — {port}", None

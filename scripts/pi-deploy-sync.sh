@@ -83,25 +83,30 @@ find_boot_tree() {
 
 load_deploy_conf() {
   BOOT_TREE=""
+  local boot_base=""
+  if boot_base="$(find_boot_tree)"; then
+    BOOT_TREE="$boot_base"
+  fi
+  # /etc wins — do not source boot deploy.conf after it (boot would reset DEPLOY_SOURCE=boot).
   if [[ -f "$PERSIST_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$PERSIST_CONF"
     log "Loaded config: $PERSIST_CONF"
+    return 0
   fi
-  local boot_base
-  if boot_base="$(find_boot_tree)"; then
+  if [[ -n "$BOOT_TREE" && -f "$BOOT_TREE/$DEPLOY_CONF_NAME" ]]; then
     # shellcheck disable=SC1090
-    source "$boot_base/$DEPLOY_CONF_NAME"
-    BOOT_TREE="$boot_base"
-    log "Loaded config: $boot_base/$DEPLOY_CONF_NAME"
-  elif [[ -f "$INSTALL_DIR/$DEPLOY_CONF_NAME" ]]; then
+    source "$BOOT_TREE/$DEPLOY_CONF_NAME"
+    log "Loaded config: $BOOT_TREE/$DEPLOY_CONF_NAME"
+    return 0
+  fi
+  if [[ -f "$INSTALL_DIR/$DEPLOY_CONF_NAME" ]]; then
     # shellcheck disable=SC1090
     source "$INSTALL_DIR/$DEPLOY_CONF_NAME"
     log "Loaded config: $INSTALL_DIR/$DEPLOY_CONF_NAME"
-  elif [[ ! -f "$PERSIST_CONF" ]]; then
-    return 1
+    return 0
   fi
-  return 0
+  return 1
 }
 
 persist_deploy_conf() {
@@ -427,6 +432,28 @@ GITHUB_BRANCH=${GITHUB_BRANCH:-main}
 ENABLE_SERVICES=${ENABLE_SERVICES:-1}
 EOF
     log "Persisted GitHub auto-pull config for future updates"
+    if wait_for_network; then
+      # shellcheck disable=SC1090
+      source "$PERSIST_CONF"
+      local gh_sha gh_short
+      if gh_sha="$(resolve_github_sha "${GITHUB_REPO}" "${GITHUB_BRANCH:-main}")"; then
+        gh_short="${gh_sha:0:7}"
+        log "Post-bootstrap GitHub pull ($gh_short)"
+        eink_status download "GitHub pull" "$gh_short" "${GITHUB_REPO}"
+        if fetch_github "${GITHUB_REPO}" "$gh_sha" && run_install; then
+          install_systemd_units
+          write_installed_sha "$gh_sha"
+          restart_services
+          log "Post-bootstrap GitHub deploy complete: $gh_short"
+        else
+          log "WARN: post-bootstrap GitHub deploy failed — timer will retry"
+        fi
+      else
+        log "WARN: could not resolve GitHub SHA for post-bootstrap pull"
+      fi
+    else
+      log "WARN: no network for post-bootstrap GitHub pull — timer will retry"
+    fi
   fi
 
   sleep 2

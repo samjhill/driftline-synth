@@ -36,7 +36,7 @@ def test_midi_status_label_not_connected():
     snap = {"preferred_found": False, "device_present": False, "inputs": []}
     label, ok = _midi_status_label(snap, {"listening": False, "connected": False})
     assert ok is False
-    assert "Not connected" in label
+    assert "no MIDI ports" in label
 
 
 def test_save_and_summary(tmp_path):

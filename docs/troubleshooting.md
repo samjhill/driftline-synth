@@ -130,6 +130,36 @@ bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
 
 The page should then show a 7–12 character Git commit id (e.g. `281a96c`).
 
+## Deploy log shows `source=boot` every minute / SuperCollider `ABRT`
+
+If the deploy log repeats `Mode=sync source=boot` and `Rsync from boot`, the Pi was re-loading **boot** `deploy.conf` on top of `/etc/pi-ambient-synth/deploy.conf` (fixed in recent `pi-deploy-sync.sh`). Until GitHub pull runs, `supercollider.service` may still point at bare `sclang` (no headless Qt) and crash with `signal=ABRT`.
+
+On the Pi:
+
+```bash
+cat /etc/pi-ambient-synth/deploy.conf   # should show DEPLOY_SOURCE=github
+sudo systemctl stop pi-ambient-synth-deploy.timer
+rm -f ~/pi-ambient-synth/.deploy_sha /var/lib/pi-ambient-synth/last_deploy_sha
+bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
+sudo systemctl start pi-ambient-synth-deploy.service
+sleep 90
+systemctl cat supercollider.service | grep ExecStart   # should use run_sclang_engine.sh
+sudo journalctl -u supercollider -n 30 --no-pager
+```
+
+Look for `Pi Ambient Synth listening on OSC port 57120` in the journal.
+
+## MIDI inputs show `—` on the monitor
+
+No ALSA MIDI ports were detected. Use a **data** USB cable (not charge-only), re-plug the KeyStep, then:
+
+```bash
+sudo modprobe snd-seq
+groups pi   # should include audio
+.venv/bin/python scripts/list_midi_devices.py
+sudo systemctl restart pi-ambient-synth
+```
+
 ## SuperCollider stuck on `activating`
 
 Usually `sclang` exits right after the script finishes (or the boot `fork` errors before the keep-alive loop), so systemd keeps restarting and `systemctl is-active` stays `activating` or flips `activating`/`failed`. The engine script must block the **main** thread (`while { true } { 1.wait }` after the boot `fork` in `synth/ambient_engine.scd`). `Restart=on-failure` in `systemd/supercollider.service` avoids a tight restart loop on clean exit; `Restart=always` would restart even on exit code 0 and can make `activating` worse.

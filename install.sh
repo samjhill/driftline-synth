@@ -125,7 +125,7 @@ sudo chown pi:pi "$MARKER_DIR"
 sudo chmod 775 "$MARKER_DIR"
 
 echo "==> GPIO access for e-ink (Pi 4/5)..."
-sudo usermod -aG gpio,spi,i2c,dialout pi 2>/dev/null || sudo usermod -aG gpio,spi pi
+sudo usermod -aG gpio,spi,i2c,dialout,adm,audio pi 2>/dev/null || sudo usermod -aG gpio,spi,adm,audio pi
 
 fb_eink install "Services" "systemd units" "auto-start"
 echo "==> Installing systemd unit files..."
