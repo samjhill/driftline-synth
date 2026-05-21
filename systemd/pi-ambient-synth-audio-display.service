@@ -5,6 +5,7 @@ Before=supercollider.service
 
 [Service]
 Type=oneshot
+Environment=EINK_LOG=/var/log/pi-ambient-synth-eink.log
 ExecStart=/bin/bash -c 'B=/home/pi/pi-ambient-synth/scripts/boot_display.sh; test -x "$B" || B=/boot/firmware/pi-ambient-synth/scripts/boot_display.sh; test -x "$B" || B=/boot/pi-ambient-synth/scripts/boot_display.sh; exec "$B" audio "Audio engine" "SuperCollider" "starting"'
 
 [Install]

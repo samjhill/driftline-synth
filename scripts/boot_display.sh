@@ -116,21 +116,31 @@ if cfg_file="$(config_path)"; then
 fi
 
 mkdir -p "$(dirname "$EINK_LOG")" 2>/dev/null || true
+BOOT_LOG_MIRROR=""
 if bl="$(boot_log_dir)"; then
   mkdir -p "$bl" 2>/dev/null || true
-  EINK_LOG="$bl/eink.log"
+  BOOT_LOG_MIRROR="$bl/eink.log"
 fi
 
-if id -u pi &>/dev/null; then
-  sudo -u pi env PYTHONPATH="$src" HOME=/home/pi EINK_FORCE=1 \
-    "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
-    "$phase" "$title" "$subtitle" "$detail" >>"$EINK_LOG" 2>&1 || {
-    echo "$(date -Iseconds) boot_display FAILED phase=$phase" >>"$EINK_LOG"
-  }
-else
-  env PYTHONPATH="$src" EINK_FORCE=1 \
-    "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
-    "$phase" "$title" "$subtitle" "$detail" >>"$EINK_LOG" 2>&1 || {
-    echo "$(date -Iseconds) boot_display FAILED phase=$phase" >>"$EINK_LOG"
-  }
+run_display() {
+  if id -u pi &>/dev/null; then
+    sudo -u pi env PYTHONPATH="$src" HOME=/home/pi EINK_FORCE=1 \
+      "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
+      "$phase" "$title" "$subtitle" "$detail"
+  else
+    env PYTHONPATH="$src" EINK_FORCE=1 \
+      "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
+      "$phase" "$title" "$subtitle" "$detail"
+  fi
+}
+
+{
+  echo "$(date -Iseconds) boot_display phase=$phase title=$title"
+  run_display
+} >>"$EINK_LOG" 2>&1 || {
+  echo "$(date -Iseconds) boot_display FAILED phase=$phase" >>"$EINK_LOG"
+}
+
+if [[ -n "$BOOT_LOG_MIRROR" && -f "$EINK_LOG" ]]; then
+  tail -n 500 "$EINK_LOG" >"$BOOT_LOG_MIRROR" 2>/dev/null || true
 fi

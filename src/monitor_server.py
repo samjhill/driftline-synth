@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 
 DEPLOY_LOG = Path("/var/log/pi-ambient-synth-deploy.log")
 EINK_LOG = Path("/var/log/pi-ambient-synth-eink.log")
+EINK_LOG_CANDIDATES = (
+    EINK_LOG,
+    Path("/boot/firmware/pi-ambient-synth/boot-logs/eink.log"),
+    Path("/boot/pi-ambient-synth/boot-logs/eink.log"),
+)
 DEPLOY_SHA_FILE = Path("/home/pi/pi-ambient-synth/.deploy_sha")
 DEPLOY_SHA_PLACEHOLDERS = frozenset({"", "boot", "boot-sd", "latest"})
 NETWORK_FILE = Path("/var/lib/pi-ambient-synth/network.json")
@@ -125,6 +130,17 @@ def _tail_file(path: Path, lines: int = 40) -> list[str]:
         return text.splitlines()[-lines:]
     except OSError:
         return []
+
+
+def _resolve_eink_log() -> Path:
+    """Prefer /var/log; fall back to SD boot-logs mirror from early boot."""
+    for path in EINK_LOG_CANDIDATES:
+        try:
+            if path.is_file() and path.stat().st_size > 0:
+                return path
+        except OSError:
+            continue
+    return EINK_LOG
 
 
 def _read_deploy_sha() -> tuple[str, str | None]:
@@ -233,7 +249,9 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
         "deploy_sha": deploy_sha,
         "deploy_sha_source": deploy_sha_source,
         "deploy_log_tail": _tail_file(DEPLOY_LOG, log_tail_lines),
-        "eink_log_tail": _tail_file(EINK_LOG, log_tail_lines),
+        "eink_log_path": str(_resolve_eink_log()),
+        "eink_log_tail": _tail_file(_resolve_eink_log(), log_tail_lines),
+        "last_eink_status": _read_marker_file("last_eink_status"),
         "network_address": _read_marker_file("network-address.txt"),
         "journal_logs": journal_logs,
         "journal_errors": journal_errors,
@@ -336,10 +354,15 @@ def _html_page(status: dict[str, Any]) -> str:
         status.get("deploy_log_tail") or [],
         empty="No deploy log yet.",
     )
+    eink_path = status.get("eink_log_path") or str(EINK_LOG)
+    eink_empty = f"No e-ink log yet (expected {eink_path})"
+    last_eink = status.get("last_eink_status")
+    if last_eink:
+        eink_empty += f". Last status marker: {_escape(last_eink)}"
     log_sections += section(
-        "E-ink log",
+        f"E-ink log ({eink_path})",
         status.get("eink_log_tail") or [],
-        empty="No e-ink log at /var/log/pi-ambient-synth-eink.log",
+        empty=eink_empty,
     )
 
     journal_logs = status.get("journal_logs") or {}

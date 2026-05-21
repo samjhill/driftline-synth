@@ -124,6 +124,11 @@ sudo mkdir -p "$MARKER_DIR"
 sudo chown pi:pi "$MARKER_DIR"
 sudo chmod 775 "$MARKER_DIR"
 
+echo "==> E-ink log (/var/log/pi-ambient-synth-eink.log)..."
+sudo touch /var/log/pi-ambient-synth-eink.log
+sudo chown pi:pi /var/log/pi-ambient-synth-eink.log
+sudo chmod 664 /var/log/pi-ambient-synth-eink.log
+
 echo "==> GPIO access for e-ink (Pi 4/5)..."
 sudo usermod -aG gpio,spi,i2c,dialout,adm,audio pi 2>/dev/null || sudo usermod -aG gpio,spi,adm,audio pi
 

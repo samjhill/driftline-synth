@@ -47,7 +47,22 @@ def show_status(
     config = load_config(config_path)
     if not config.get("eink", {}).get("enabled", True):
         return 0
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    log_path = os.environ.get("EINK_LOG")
+    if log_path:
+        try:
+            Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(
+                logging.FileHandler(log_path, mode="a", encoding="utf-8")
+            )
+        except OSError:
+            pass
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(message)s",
+        handlers=handlers,
+        force=True,
+    )
     display = EInkDisplay(config)
     if not display.init():
         print("E-ink init failed — check SPI, gpiozero, vendor/waveshare", file=sys.stderr)

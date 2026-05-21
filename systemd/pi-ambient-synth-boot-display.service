@@ -6,6 +6,7 @@ Before=network-pre.target pi-ambient-synth-deploy.service
 
 [Service]
 Type=oneshot
+Environment=EINK_LOG=/var/log/pi-ambient-synth-eink.log
 ExecStart=/bin/bash -c 'B=/home/pi/pi-ambient-synth/scripts/boot_display.sh; if test ! -x "$B"; then B=/boot/firmware/pi-ambient-synth/scripts/boot_display.sh; fi; if test ! -x "$B"; then B=/boot/pi-ambient-synth/scripts/boot_display.sh; fi; exec "$B" boot "Booting" "Pi Ambient Synth" "power on"'
 
 [Install]
