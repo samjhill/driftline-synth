@@ -337,6 +337,36 @@ sudo rm -rf /usr/local/lib/python3.*/dist-packages/waveshare_epd
   EINK_FORCE=1 ./scripts/boot_display.sh ready "Test" "e-ink OK" ""
   ```
 
+## E-ink: `GPIO busy` after another project on this Pi (e.g. ingest)
+
+A previous app on the same Pi often leaves **systemd units**, **Python processes**, or a **second copy of `waveshare_epd`** installed under `/usr/local`. A one-shot `kill-ingest` (or similar) may stop running processes but still leave:
+
+- An **enabled** service that restarts on boot and grabs GPIO again
+- A **system-wide** Waveshare install that shadows `vendor/waveshare`
+- **Stuck lgpio** state until reboot (if an old process was killed with `SIGKILL` / `timeout`)
+
+On the Pi:
+
+```bash
+bash ~/pi-ambient-synth/scripts/diagnose_eink_gpio.sh
+```
+
+Then disable anything ingest-related you still see active:
+
+```bash
+systemctl list-units --all | grep -i ingest
+sudo systemctl disable --now <name>.service   # each leftover unit
+sudo rm -rf /usr/local/lib/python3.*/dist-packages/waveshare_epd
+sudo reboot
+```
+
+After reboot, before starting the synth:
+
+```bash
+cd ~/pi-ambient-synth
+SKIP_SYNC=1 EINK_FORCE=1 ./scripts/boot_display.sh ready "Test" "after reboot" ""
+```
+
 ## E-ink: `lgpio.error: 'GPIO busy'`
 
 Another process already claimed the HAT GPIO lines (often a leftover from an earlier e-ink script or a duplicate Waveshare install).
