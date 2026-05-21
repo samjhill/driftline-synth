@@ -21,8 +21,10 @@ jack_alsa_dev() {
 
 jack_candidates() {
   local base="${SC_JACK_DEVICE:-${SC_AUDIO_DEVICE:-hw:0,0}}"
+  # Pi headphone jack is hw:0,0 — hw:0 retry often kills a working jackd (JACK SIGTERM / "Failed to open server").
   case "$base" in
-    hw:0 | hw:0,0 | plughw:0,0) echo -e "hw:0,0\nhw:0" ;;
+    hw:0,0 | plughw:0,0) echo "hw:0,0" ;;
+    hw:0) echo "hw:0" ;;
     *) echo "$(jack_alsa_dev "$base")" ;;
   esac
 }
@@ -72,6 +74,7 @@ stop_audio_stack() {
   pkill -x scsynth 2>/dev/null || true
   pkill -x jackd 2>/dev/null || true
   sleep 0.5
+  rm -f /dev/shm/jack-* /dev/shm/jackdmp* 2>/dev/null || true
 }
 
 wait_jack() {
@@ -120,7 +123,6 @@ wait_scsynth() {
 start_jack() {
   local dev="$1"
   local pid
-  stop_audio_stack
   {
     echo "=== $(date -Iseconds) jackd dev=$dev rate=$RATE period=$JACK_PERIOD n=$JACK_NPERIODS ==="
     echo "cmd: jackd -dalsa -d$dev -r$RATE -p$JACK_PERIOD -n$JACK_NPERIODS -i0 -o2"
@@ -171,10 +173,14 @@ start_scsynth_client() {
 
 try_stack() {
   local dev="$1"
-  if start_jack "$dev" && start_scsynth_client "$dev"; then
+  if ! start_jack "$dev"; then
+    return 1
+  fi
+  sleep 0.5
+  if start_scsynth_client "$dev"; then
     return 0
   fi
-  stop_audio_stack
+  pkill -x scsynth 2>/dev/null || true
   return 1
 }
 
@@ -185,11 +191,14 @@ echo "scsynth: $(scsynth -v 2>&1 | head -1 || true)"
 echo "jackd: $(command -v jackd || echo missing)"
 echo "Note: Pi SC 3.13 -H embeds JACK; use external jackd + scsynth client" | tee -a "$LOG"
 
+stop_audio_stack
+
 while IFS= read -r dev; do
   [[ -n "$dev" ]] || continue
   if try_stack "$dev"; then
     exit 0
   fi
+  stop_audio_stack
 done < <(jack_candidates)
 
 echo "ERROR: jackd+scsynth did not stay up on port $PORT" >&2

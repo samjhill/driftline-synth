@@ -2,16 +2,23 @@
 # Pi SC 3.13: external jackd + scsynth + sclang (SSH-safe: progress pings, optional phases).
 #
 # Full run (use tmux/screen if SSH is flaky):
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/df652e5/scripts/pi_jack_scsynth_hotfix.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/e00c14b/scripts/pi_jack_scsynth_hotfix.sh | bash
 #
-# Split phases (recommended over SSH):
-#   HOTFIX_FETCH_ONLY=1  curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash
-#   HOTFIX_AUDIO_ONLY=1  curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash
-#   HOTFIX_SMOKE_ONLY=1  curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash
-#   HOTFIX_SERVICES_ONLY=1 curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash
+# Split phases (env must apply to bash, not curl — use bash -s or env before bash):
+#   curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s fetch-only
+#   curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s audio-only
+#   curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s smoke-only
+#   curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s services-only
 set -euo pipefail
 
-PINNED_SHA="df652e5"
+case "${1:-}" in
+  fetch-only|fetch) HOTFIX_FETCH_ONLY=1 ;;
+  audio-only|audio) HOTFIX_AUDIO_ONLY=1 ;;
+  smoke-only|smoke) HOTFIX_SMOKE_ONLY=1 ;;
+  services-only|services) HOTFIX_SERVICES_ONLY=1 ;;
+esac
+
+PINNED_SHA="e00c14b"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
