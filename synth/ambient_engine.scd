@@ -38,6 +38,40 @@ patchParams[\stereo_width] = 0.7;
 patchParams[\brightness] = 0.6;
 patchParams[\root_note] = 48;
 
+~configureServerAudio = {
+	var opt = Server.default.options;
+	var env = getenv("SC_AUDIO_DEVICE");
+	opt.numOutputBusChannels = 2;
+	opt.numInputBusChannels = 2;
+	opt.sampleRate = 44100;
+	if(env.notNil && { env.size > 0 }, {
+		"SC_AUDIO_DEVICE=%".format(env).postln;
+		opt.device = env;
+	}, {
+		opt.device = "plughw:0,0";
+		"SC_AUDIO_DEVICE unset — using plughw:0,0 (Pi headphone jack)".postln;
+	});
+};
+
+port = 57120;
+"Pi Ambient Synth engine script loading (build c9c5d30)".postln;
+"Booting Pi Ambient Synth engine...".postln;
+s = Server.local;
+~configureServerAudio.();
+if(s.serverRunning.not, {
+	"Starting scsynth...".postln;
+	s.boot;
+	3.wait;
+});
+s.sync;
+if(s.serverRunning.not, {
+	"ERROR: scsynth failed to start — check: which scsynth, aplay -l, SC_AUDIO_DEVICE".postln;
+}, {
+	("scsynth running — device: %, out ch: %".format(
+		s.options.device, s.options.numOutputBusChannels
+	)).postln;
+});
+
 ~setParam = { |key, val|
 	patchParams[key.asSymbol] = val;
 };
@@ -175,44 +209,13 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 	ReplaceOut.ar(out, LeakDC.ar(sig));
 }).add;
 
-~configureServerAudio = {
-	var opt = Server.default.options;
-	var env = getenv("SC_AUDIO_DEVICE");
-	opt.numOutputBusChannels = 2;
-	opt.numInputBusChannels = 2;
-	opt.sampleRate = 44100;
-	if(env.notNil && { env.size > 0 }, {
-		"SC_AUDIO_DEVICE=%".format(env).postln;
-		opt.device = env;
-	}, {
-		opt.device = "plughw:0,0";
-		"SC_AUDIO_DEVICE unset — using plughw:0,0 (Pi headphone jack)".postln;
-	});
-};
-
 ~textureAmp = { |vol|
 	if(textureSynth.notNil, {
 		textureSynth.set(\amp, (vol ? masterVol) * 1.35);
 	});
 };
 
-port = 57120;
-"Booting Pi Ambient Synth engine...".postln;
-s = Server.local;
-~configureServerAudio.();
-if(s.serverRunning.not, {
-	"Starting scsynth...".postln;
-	s.boot;
-	3.wait;
-});
-s.sync;
-if(s.serverRunning.not, {
-	"ERROR: scsynth failed to start — check journal, aplay -l, SC_AUDIO_DEVICE".postln;
-}, {
-	("scsynth running — device: %, out ch: %".format(
-		s.options.device, s.options.numOutputBusChannels
-	)).postln;
-
+if(s.serverRunning, {
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 

@@ -14,4 +14,5 @@ export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
 export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-plughw:0,0}"
 
 # Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
-exec /usr/bin/sclang "$SCD" </dev/null
+# Line-buffered stdout so systemd journal shows Booting/scsynth lines promptly.
+exec stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null
