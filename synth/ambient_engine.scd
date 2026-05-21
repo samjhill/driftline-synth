@@ -3,7 +3,7 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port;
+var port, useAlsaSynth;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -56,24 +56,37 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc313-safeIf)".postln;
+useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
+"Pi Ambient Synth engine script loading (build sc313-alsaExternal)".postln;
 "Booting Pi Ambient Synth engine...".postln;
-Server.killAll;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-if(s.serverRunning.asBoolean, {
-	s.quit;
+if(useAlsaSynth, {
+	// scsynth started by scripts/start_scsynth_alsa.sh (-a alsa, no JACK)
 	s.sync;
-});
-"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
-s.boot(~audioDevice);
-s.sync;
-if(s.serverRunning.asBoolean, {
-	("scsynth running — device: %, rate: %, out ch: %".format(
-		s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
-	)).postln;
+	if(s.serverRunning.asBoolean, {
+		("scsynth connected (external ALSA) — device: %, rate: %".format(
+			~audioDevice, s.serverSampleRate
+		)).postln;
+	}, {
+		"ERROR: SC_HEADLESS_ALSA set but scsynth not on port 57110 — run start_scsynth_alsa.sh".postln;
+	});
 }, {
-	"ERROR: sclang not connected to scsynth after sync — pgrep scsynth; SC_AUDIO_DEVICE".postln;
+	Server.killAll;
+	if(s.serverRunning.asBoolean, {
+		s.quit;
+		s.sync;
+	});
+	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
+	s.boot(~audioDevice);
+	s.sync;
+	if(s.serverRunning.asBoolean, {
+		("scsynth running — device: %, rate: %, out ch: %".format(
+			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
+		)).postln;
+	}, {
+		"ERROR: sclang not connected to scsynth after sync — pgrep scsynth; SC_AUDIO_DEVICE".postln;
+	});
 });
 
 ~setParam = { |key, val|

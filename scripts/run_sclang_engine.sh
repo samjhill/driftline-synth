@@ -15,11 +15,13 @@ export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
 export JACK_NO_AUDIO_RESERVATION="${JACK_NO_AUDIO_RESERVATION:-1}"
 # ALSA device name from `aplay -L` (e.g. plughw:0,0). Empty makes scsynth try JACK.
 export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
+export SC_HEADLESS_ALSA="${SC_HEADLESS_ALSA:-1}"
 
 # Orphan scsynth from a prior crash/restart can hold ALSA while sclang has no synths.
 rm -f "$READY_MARKER" 2>/dev/null || true
 pkill -x scsynth 2>/dev/null || true
 sleep 0.35
+"$ROOT/scripts/start_scsynth_alsa.sh"
 
 # Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
 # Line-buffered stdout so systemd journal shows Booting/scsynth lines promptly.

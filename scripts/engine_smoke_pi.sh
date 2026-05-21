@@ -22,13 +22,15 @@ if [[ "${1:-}" == "--restart" ]]; then
   pkill -x scsynth 2>/dev/null || true
   sleep 0.35
 fi
+export SC_HEADLESS_ALSA=1
+"$ROOT/scripts/start_scsynth_alsa.sh" || true
 
 if [[ ! -f "$SCD" ]]; then
   echo "ERROR: missing $SCD" >&2
   exit 1
 fi
 
-grep -q 'sc313-safeIf' "$SCD" || echo "WARN: engine file may be stale (no sc313-safeIf marker)" >&2
+grep -q 'sc313-alsaExternal' "$SCD" || echo "WARN: engine file may be stale (no sc313-alsaExternal marker)" >&2
 
 echo "==> engine smoke: $SCD (timeout ${TIMEOUT}s, log $LOG)"
 rm -f /var/lib/pi-ambient-synth/sc-engine-ready 2>/dev/null || true
@@ -44,7 +46,7 @@ fi
 set -e
 
 echo "==> exit $status — highlights:"
-grep -E 'safeIf|SC_AUDIO|scsynth running|listening on OSC|Engine synths|ENGINE_TEST|ERROR|Boolean|syntax|WARN:' "$LOG" || true
+grep -E 'alsaExternal|SC_AUDIO|scsynth connected|listening on OSC|Engine synths|ENGINE_TEST|ERROR|Boolean|syntax|JackTemporary|WARN:' "$LOG" || true
 
 if grep -qE 'ERROR:|MustBeBoolean|syntax error|Command line parse failed' "$LOG"; then
   echo "==> last 25 lines:" >&2

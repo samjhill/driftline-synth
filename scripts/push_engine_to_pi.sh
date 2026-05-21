@@ -10,7 +10,8 @@ REMOTE="${PI_REMOTE_ROOT:-/home/pi/pi-ambient-synth}"
 
 echo "==> rsync engine -> $HOST:$REMOTE/synth/"
 rsync -az "$ROOT/synth/ambient_engine.scd" "$HOST:$REMOTE/synth/ambient_engine.scd"
-rsync -az "$ROOT/scripts/engine_smoke_pi.sh" "$HOST:$REMOTE/scripts/engine_smoke_pi.sh"
+rsync -az "$ROOT/scripts/engine_smoke_pi.sh" "$ROOT/scripts/start_scsynth_alsa.sh" \
+  "$ROOT/scripts/run_sclang_engine.sh" "$HOST:$REMOTE/scripts/"
 
 echo "==> remote smoke (no systemd)"
 ssh "$HOST" "chmod +x $REMOTE/scripts/engine_smoke_pi.sh && $REMOTE/scripts/engine_smoke_pi.sh --restart"

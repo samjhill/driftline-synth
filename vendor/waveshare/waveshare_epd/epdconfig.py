@@ -50,18 +50,57 @@ class RaspberryPi:
 
     def __init__(self):
         import spidev
-        import gpiozero
-        
-        self.SPI = spidev.SpiDev()
-        self.GPIO_RST_PIN    = gpiozero.LED(self.RST_PIN)
-        self.GPIO_DC_PIN     = gpiozero.LED(self.DC_PIN)
-        # self.GPIO_CS_PIN     = gpiozero.LED(self.CS_PIN)
-        self.GPIO_PWR_PIN    = gpiozero.LED(self.PWR_PIN)
-        self.GPIO_BUSY_PIN   = gpiozero.Button(self.BUSY_PIN, pull_up = False)
 
-        
+        self.SPI = spidev.SpiDev()
+        self._use_lgpio = False
+        self._lgpio = None
+        self._lgpio_chip = None
+        self._lgpio_out = {}
+        self._lgpio_busy = None
+        self.GPIO_RST_PIN = None
+        self.GPIO_DC_PIN = None
+        self.GPIO_PWR_PIN = None
+        self.GPIO_BUSY_PIN = None
+
+        try:
+            import lgpio
+
+            self._lgpio = lgpio
+            chip = lgpio.gpiochip_open(0)
+            self._lgpio_chip = chip
+            self._lgpio_out[self.RST_PIN] = lgpio.gpio_claim_output(
+                chip, self.RST_PIN, lgpio.SET_PULL_NONE, 0
+            )
+            self._lgpio_out[self.DC_PIN] = lgpio.gpio_claim_output(
+                chip, self.DC_PIN, lgpio.SET_PULL_NONE, 0
+            )
+            self._lgpio_out[self.PWR_PIN] = lgpio.gpio_claim_output(
+                chip, self.PWR_PIN, lgpio.SET_PULL_NONE, 0
+            )
+            self._lgpio_busy = lgpio.gpio_claim_input(
+                chip, self.BUSY_PIN, lgpio.SET_PULL_NONE
+            )
+            self._use_lgpio = True
+            logger.debug("epdconfig: using lgpio for HAT pins")
+        except Exception as exc:
+            logger.debug("epdconfig: lgpio unavailable (%s), falling back to gpiozero", exc)
+            import gpiozero
+
+            self.GPIO_RST_PIN = gpiozero.LED(self.RST_PIN)
+            self.GPIO_DC_PIN = gpiozero.LED(self.DC_PIN)
+            self.GPIO_PWR_PIN = gpiozero.LED(self.PWR_PIN)
+            self.GPIO_BUSY_PIN = gpiozero.Button(self.BUSY_PIN, pull_up=False)
+
+    def _lgpio_write(self, pin, value):
+        handle = self._lgpio_out.get(pin)
+        if handle is not None:
+            self._lgpio.gpio_write(self._lgpio_chip, handle, 1 if value else 0)
 
     def digital_write(self, pin, value):
+        if self._use_lgpio:
+            if pin in (self.RST_PIN, self.DC_PIN, self.PWR_PIN):
+                self._lgpio_write(pin, value)
+            return
         if pin == self.RST_PIN:
             if value:
                 self.GPIO_RST_PIN.on()
@@ -72,11 +111,6 @@ class RaspberryPi:
                 self.GPIO_DC_PIN.on()
             else:
                 self.GPIO_DC_PIN.off()
-        # elif pin == self.CS_PIN:
-        #     if value:
-        #         self.GPIO_CS_PIN.on()
-        #     else:
-        #         self.GPIO_CS_PIN.off()
         elif pin == self.PWR_PIN:
             if value:
                 self.GPIO_PWR_PIN.on()
@@ -85,13 +119,15 @@ class RaspberryPi:
 
     def digital_read(self, pin):
         if pin == self.BUSY_PIN:
+            if self._use_lgpio and self._lgpio_busy is not None:
+                return self._lgpio.gpio_read(self._lgpio_chip, self._lgpio_busy)
             return self.GPIO_BUSY_PIN.value
-        elif pin == self.RST_PIN:
+        if self._use_lgpio:
+            return 0
+        if pin == self.RST_PIN:
             return self.RST_PIN.value
         elif pin == self.DC_PIN:
             return self.DC_PIN.value
-        # elif pin == self.CS_PIN:
-        #     return self.CS_PIN.value
         elif pin == self.PWR_PIN:
             return self.PWR_PIN.value
 
@@ -114,8 +150,11 @@ class RaspberryPi:
         return self.DEV_SPI.DEV_SPI_ReadData()
 
     def module_init(self, cleanup=False):
-        self.GPIO_PWR_PIN.on()
-        
+        if self._use_lgpio:
+            self._lgpio_write(self.PWR_PIN, 1)
+        else:
+            self.GPIO_PWR_PIN.on()
+
         if cleanup:
             find_dirs = [
                 os.path.dirname(os.path.realpath(__file__)),
@@ -145,21 +184,51 @@ class RaspberryPi:
             self.SPI.mode = 0b00
         return 0
 
+    def _lgpio_release(self):
+        if not self._use_lgpio or self._lgpio is None or self._lgpio_chip is None:
+            return
+        chip = self._lgpio_chip
+        for handle in list(self._lgpio_out.values()):
+            try:
+                self._lgpio.gpio_free(chip, handle)
+            except Exception:
+                pass
+        self._lgpio_out.clear()
+        if self._lgpio_busy is not None:
+            try:
+                self._lgpio.gpio_free(chip, self._lgpio_busy)
+            except Exception:
+                pass
+            self._lgpio_busy = None
+        try:
+            self._lgpio.gpiochip_close(chip)
+        except Exception:
+            pass
+        self._lgpio_chip = None
+
     def module_exit(self, cleanup=False):
         logger.debug("spi end")
-        self.SPI.close()
+        try:
+            self.SPI.close()
+        except Exception:
+            pass
 
-        self.GPIO_RST_PIN.off()
-        self.GPIO_DC_PIN.off()
-        self.GPIO_PWR_PIN.off()
+        if self._use_lgpio:
+            self._lgpio_write(self.RST_PIN, 0)
+            self._lgpio_write(self.DC_PIN, 0)
+            self._lgpio_write(self.PWR_PIN, 0)
+            if cleanup:
+                self._lgpio_release()
+        else:
+            self.GPIO_RST_PIN.off()
+            self.GPIO_DC_PIN.off()
+            self.GPIO_PWR_PIN.off()
+            if cleanup:
+                self.GPIO_RST_PIN.close()
+                self.GPIO_DC_PIN.close()
+                self.GPIO_PWR_PIN.close()
+                self.GPIO_BUSY_PIN.close()
         logger.debug("close 5V, Module enters 0 power consumption ...")
-        
-        if cleanup:
-            self.GPIO_RST_PIN.close()
-            self.GPIO_DC_PIN.close()
-            # self.GPIO_CS_PIN.close()
-            self.GPIO_PWR_PIN.close()
-            self.GPIO_BUSY_PIN.close()
 
         
 
