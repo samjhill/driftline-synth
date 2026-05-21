@@ -18,7 +18,7 @@ case "${1:-}" in
   services-only|services) HOTFIX_SERVICES_ONLY=1 ;;
 esac
 
-PINNED_SHA="547fcc4"
+PINNED_SHA="ae3c641"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
