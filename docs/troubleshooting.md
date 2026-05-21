@@ -36,6 +36,18 @@ python scripts/list_midi_devices.py
 
 Confirm the KeyStep appears. If not, unplug/replug and check `dmesg` on the Pi.
 
+## Synth restarts: `MidiInAlsa::initialize: error creating ALSA sequencer client`
+
+The app should stay running without MIDI (latest code catches this). To fix ALSA MIDI:
+
+```bash
+groups pi   # should include audio
+sudo modprobe snd-seq
+python3 scripts/list_midi_devices.py
+```
+
+Re-plug the KeyStep USB data cable, then `sudo systemctl restart pi-ambient-synth`.
+
 ## No sound
 
 1. Confirm SuperCollider is running: `systemctl status supercollider` or watch `sclang` output.

@@ -62,7 +62,11 @@ class MidiController:
 
     @staticmethod
     def list_inputs() -> list[str]:
-        return mido.get_input_names()
+        try:
+            return mido.get_input_names()
+        except Exception as e:
+            logger.error("MIDI port scan failed: %s", e)
+            return []
 
     def select_port(self) -> str | None:
         names = self.list_inputs()
