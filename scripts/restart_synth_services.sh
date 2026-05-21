@@ -47,10 +47,13 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
   fi
   sudo systemctl start pi-flues-synth.service
   flues_ok=0
-  for _ in $(seq 1 25); do
+  for _ in $(seq 1 30); do
     if systemctl is-active --quiet pi-flues-synth.service && pgrep -x flues-synth >/dev/null; then
-      flues_ok=1
-      break
+      sleep 2
+      if systemctl is-active --quiet pi-flues-synth.service && pgrep -x flues-synth >/dev/null; then
+        flues_ok=1
+        break
+      fi
     fi
     sleep 1
   done
@@ -59,9 +62,14 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
     journalctl -u pi-flues-synth -n 25 --no-pager >&2 || true
     exit 1
   fi
-  log "start pi-ambient-synth (monitor/e-ink)"
+  log "start pi-ambient-synth (monitor/e-ink; no SC required)"
   sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
-  sleep 2
+  sleep 3
+  if ! systemctl is-active --quiet pi-flues-synth.service; then
+    echo "ERROR: pi-flues-synth stopped after starting pi-ambient-synth (check Requires/Conflicts)" >&2
+    journalctl -u pi-flues-synth -n 15 --no-pager >&2 || true
+    exit 1
+  fi
   if [[ -x "$INSTALL_DIR/.venv/bin/python" && -f "$INSTALL_DIR/src/flues_client.py" ]]; then
     "$INSTALL_DIR/.venv/bin/python" -c "
 import sys

@@ -1,7 +1,8 @@
 [Unit]
 Description=Pi Ambient Synth Controller
-After=supercollider.service pi-ambient-synth-network-announce.service
-Requires=supercollider.service
+After=pi-ambient-synth-network-announce.service
+# Optional engines: supercollider OR pi-flues-synth (see audio-mode.conf).
+Wants=supercollider.service pi-flues-synth.service
 StartLimitIntervalSec=120
 StartLimitBurst=6
 

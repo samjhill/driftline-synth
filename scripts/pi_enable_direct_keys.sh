@@ -23,6 +23,7 @@ sleep 1
 sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/ 2>/dev/null || true
 sudo mkdir -p /etc/systemd/system/pi-ambient-synth-midi.service.d
 sudo rm -f /etc/systemd/system/pi-ambient-synth-midi.service.d/ambient-hybrid.conf 2>/dev/null || true
+sudo rm -f /etc/systemd/system/pi-ambient-synth.service.d/flues.conf 2>/dev/null || true
 if [[ -f "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.direct-keys.conf" ]]; then
   sudo cp "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.direct-keys.conf" \
     /etc/systemd/system/pi-ambient-synth-midi.service.d/direct-keys.conf

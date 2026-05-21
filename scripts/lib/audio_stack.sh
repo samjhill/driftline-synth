@@ -38,6 +38,11 @@ install_flues_systemd_units() {
     sudo cp "$root/deploy/systemd/pi-ambient-synth-midi.flues.conf" \
       /etc/systemd/system/pi-ambient-synth-midi.service.d/flues.conf
   fi
+  if [[ -f "$root/deploy/systemd/pi-ambient-synth.flues.conf" ]]; then
+    sudo mkdir -p /etc/systemd/system/pi-ambient-synth.service.d
+    sudo cp "$root/deploy/systemd/pi-ambient-synth.flues.conf" \
+      /etc/systemd/system/pi-ambient-synth.service.d/flues.conf
+  fi
   sudo systemctl daemon-reload
 }
 
