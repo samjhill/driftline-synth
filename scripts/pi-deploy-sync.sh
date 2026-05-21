@@ -5,8 +5,12 @@ set -euo pipefail
 
 MODE="${1:-sync}"
 LOG_TAG="pi-deploy-sync"
-# Fixed path — do not override via env (empty INSTALL_DIR made rsync --delete target "/").
-INSTALL_DIR="/home/pi/pi-ambient-synth"
+# Ignore inherited env (wrong INSTALL_DIR=/home/pi caused rsync --delete to wipe $HOME).
+unset INSTALL_DIR BOOT_TREE DEPLOY_INSTALL_DIR 2>/dev/null || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib_deploy_sync.sh
+source "$SCRIPT_DIR/lib_deploy_sync.sh"
+INSTALL_DIR="$DEPLOY_INSTALL_DIR"
 MARKER_DIR="/var/lib/pi-ambient-synth"
 PERSIST_CONF="/etc/pi-ambient-synth/deploy.conf"
 LOG_FILE="/var/log/pi-ambient-synth-deploy.log"
@@ -34,14 +38,14 @@ eink_status() {
       if [[ "${INSTALL_FIRST_BOOT:-0}" == "1" || "$MODE" == "bootstrap" ]]; then
         export FIRST_BOOT_TRACK=1
         export FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}"
-        "$boot_disp" "$phase" "$title" "$subtitle" "$detail" || true
-        return 0
       fi
-      break
+      EINK_FORCE=1 EINK_LOG=/var/log/pi-ambient-synth-eink.log \
+        "$boot_disp" "$phase" "$title" "$subtitle" "$detail" || true
+      return 0
     fi
   done
 
-  local script py
+  local script py eink_log=/var/log/pi-ambient-synth-eink.log
   script="$INSTALL_DIR/scripts/show_status.py"
   if [[ ! -f "$script" ]]; then
     local b
@@ -56,10 +60,13 @@ eink_status() {
 
   py="$INSTALL_DIR/.venv/bin/python"
   [[ -x "$py" ]] || py="$(command -v python3 || echo python3)"
+  mkdir -p "$(dirname "$eink_log")" 2>/dev/null || true
 
-  sudo -u pi env PYTHONPATH="$INSTALL_DIR/src" HOME=/home/pi \
-    "$py" "$script" "$phase" "$title" "$subtitle" "$detail" 2>/dev/null \
-    || true
+  {
+    echo "$(date -Iseconds) eink_status phase=$phase (no boot_display.sh)"
+    sudo -u pi env PYTHONPATH="$INSTALL_DIR/src" HOME=/home/pi EINK_FORCE=1 \
+      "$py" "$script" "$phase" "$title" "$subtitle" "$detail"
+  } >>"$eink_log" 2>&1 || true
 }
 
 eink_restore_patch() {
@@ -153,7 +160,7 @@ ensure_pi_user() {
     useradd -m -s /bin/bash pi 2>/dev/null || true
   fi
   mkdir -p "$INSTALL_DIR"
-  chown -R pi:pi /home/pi 2>/dev/null || true
+  chown pi:pi "$INSTALL_DIR" 2>/dev/null || true
 }
 
 github_curl() {
@@ -180,55 +187,10 @@ resolve_github_sha() {
   echo "$sha"
 }
 
-validate_project_source() {
-  local src="$1"
-  if [[ ! -d "$src" ]]; then
-    log "ERROR: rsync source missing: $src"
-    return 1
-  fi
-  if [[ ! -f "$src/install.sh" || ! -f "$src/src/main.py" ]]; then
-    log "ERROR: rsync source is not pi-ambient-synth (need install.sh + src/main.py): $src"
-    return 1
-  fi
-  return 0
-}
-
-validate_install_dest() {
-  local dest="$1"
-  if [[ "$dest" != "/home/pi/pi-ambient-synth" ]]; then
-    log "ERROR: refusing rsync --delete to unsafe path: $dest"
-    return 1
-  fi
-  if [[ "$dest" == "/" || "$dest" == "/home" || "$dest" == "/home/pi" ]]; then
-    log "ERROR: refusing filesystem root or home as deploy target"
-    return 1
-  fi
-  return 0
-}
-
-# Sync only the app tree into ~/pi-ambient-synth (never /, /boot, or $HOME).
-sync_project_tree() {
-  local src="$1"
-  local dest="$INSTALL_DIR"
-  validate_project_source "$src" || return 1
-  validate_install_dest "$dest" || return 1
-  log "Rsync project: $src -> $dest"
-  mkdir -p "$dest"
-  chown -R pi:pi "$dest" 2>/dev/null || true
-  rsync -a --delete \
-    --exclude '.venv/' \
-    --exclude '.git/' \
-    --exclude '.deploy_sha' \
-    --exclude 'state/' \
-    --exclude '__pycache__/' \
-    --exclude '.pytest_cache/' \
-    "$src/" "$dest/"
-  chown -R pi:pi "$dest"
-}
-
 rsync_from_boot() {
   local src="$1"
-  sync_project_tree "$src"
+  log "Sync from boot: $src -> $INSTALL_DIR"
+  safe_sync_project_tree "$src" || return 1
 }
 
 fetch_github() {
@@ -243,11 +205,12 @@ fetch_github() {
   tar -xzf "$tmp/src.tar.gz" -C "$tmp/extract"
   local extracted
   extracted="$(find "$tmp/extract" -maxdepth 1 -type d ! -path "$tmp/extract" | head -1)"
-  if [[ -z "$extracted" ]] || ! validate_project_source "$extracted"; then
-    log "ERROR: GitHub archive did not extract to a valid project tree"
+  if [[ -z "$extracted" ]]; then
+    log "ERROR: GitHub archive did not extract"
     return 1
   fi
-  sync_project_tree "$extracted"
+  log "GitHub tree: $extracted -> $INSTALL_DIR"
+  safe_sync_project_tree "$extracted" || return 1
 }
 
 run_install() {

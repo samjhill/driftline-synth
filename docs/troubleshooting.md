@@ -169,19 +169,22 @@ The page should then show a 7–12 character Git commit id (e.g. `281a96c`).
 
 ## rsync errors: `cannot delete ... dev/`, `boot/`, `Permission denied` on install
 
-This means **`rsync --delete` targeted the wrong directory** (often `/` when `INSTALL_DIR` was empty) or files under `~/pi-ambient-synth` are **owned by root** from a previous deploy.
+This means **`rsync --delete` targeted the wrong directory** — often `/`, `/home/pi`, or `home/pi` (missing leading `/`) when `INSTALL_DIR` was inherited from the shell as `/home/pi` instead of `/home/pi/pi-ambient-synth`. That tries to delete `~/.local`, `.bashrc`, etc.
 
-**Do not** run manual `rsync --delete` to `~`, `/`, or `/boot`.
+**Do not** run manual `rsync --delete` to `~`, `/home/pi`, `/`, or `/boot`.
 
-Recovery:
+Recovery (uses **staging deploy**, no `--delete`):
 
 ```bash
 sudo systemctl stop pi-ambient-synth-deploy.timer
+unset INSTALL_DIR
 curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/fix_install_permissions.sh | bash
 curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/recover_pi_from_github.sh | bash
 ```
 
-Recent `pi-deploy-sync.sh` hard-codes `INSTALL_DIR=/home/pi/pi-ambient-synth` and refuses unsafe targets.
+If `pip` under `~/.local` was damaged: `python3 -m ensurepip --user` or re-run recover after the fix above.
+
+Deploy scripts now **`unset INSTALL_DIR`** before running and copy via `scripts/lib_deploy_sync.sh` (staging + atomic rename only).
 
 ## Deploy log shows `source=boot` every minute / SuperCollider `ABRT`
 
@@ -266,6 +269,15 @@ sudo systemctl stop pi-ambient-synth
 - Waveshare driver installed (`waveshare_epd` importable)
 - Run: `python scripts/test_eink.py`
 - Use `python src/main.py --no-eink` to run without display
+- Check the e-ink log (also shown on the LAN monitor page):
+  ```bash
+  tail -30 /var/log/pi-ambient-synth-eink.log
+  ```
+  Early first-boot may mirror the last lines to `boot-logs/eink.log` on the SD boot partition; routine updates always append to `/var/log/pi-ambient-synth-eink.log`.
+- Force a status screen and log line:
+  ```bash
+  EINK_FORCE=1 ./scripts/boot_display.sh ready "Test" "e-ink OK" ""
+  ```
 
 ## E-ink: `lgpio.error: 'GPIO busy'`
 

@@ -5,6 +5,8 @@
 # Or (if scripts are already current): bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
 set -euo pipefail
 
+unset INSTALL_DIR 2>/dev/null || true
+
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 BRANCH="${GITHUB_BRANCH:-main}"
 
@@ -21,7 +23,7 @@ EOF
 
 echo "Wrote /etc/pi-ambient-synth/deploy.conf (GitHub ${REPO}@${BRANCH})"
 
-INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
+INSTALL_DIR="/home/pi/pi-ambient-synth"
 MARKER_DIR="/var/lib/pi-ambient-synth"
 for f in "$INSTALL_DIR/.deploy_sha" "$MARKER_DIR/last_deploy_sha"; do
   if [[ -f "$f" ]] && grep -qxE 'boot-sd|boot|latest' "$f" 2>/dev/null; then
