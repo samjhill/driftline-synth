@@ -54,7 +54,7 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build 649a8f2)".postln;
+"Pi Ambient Synth engine script loading (build sc-nilcoalesce)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~configureServerAudio.();
@@ -396,7 +396,7 @@ if(s.serverRunning, {
 	OSCdef(\piPanicBloom, { ~panicBloom.() }, \pi_synth_panic_bloom);
 
 	OSCdef(\piClockBpm, { |msg|
-		var bpm = msg[1] ? msg[1] : 120;
+		var bpm = msg[1] ?? 120;
 		var beat = 60 / bpm;
 		clockBpm = bpm;
 		if(textureSynth.notNil, {
@@ -406,8 +406,8 @@ if(s.serverRunning, {
 	}, \pi_synth_clock_bpm);
 
 	OSCdef(\piTapeGrit, { |msg|
-		var amt = msg[1] ? msg[1] : 0.2;
-		var sec = msg[2] ? msg[2] : 4;
+		var amt = msg[1] ?? 0.2;
+		var sec = msg[2] ?? 4;
 		~morphParam.(\noise_level, amt, 0.5);
 		fork {
 			sec.wait;

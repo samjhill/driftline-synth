@@ -128,11 +128,16 @@ sed -n '381p' ~/pi-ambient-synth/synth/ambient_engine.scd
 # must show: if(companionOn and: { companionSynth.isNil }, {
 ```
 
-Quick one-line patch if you cannot redeploy:
+Quick one-line patches if you cannot redeploy:
 
 ```bash
 sed -i 's/companionOn and {/companionOn and: {/' ~/pi-ambient-synth/synth/ambient_engine.scd
+sed -i 's/msg\[\([0-9]\)\] ? msg\[\1\] :/msg[\1] ??/g' ~/pi-ambient-synth/synth/ambient_engine.scd
 ```
+
+### Journal: `unexpected ':'` at `msg[1] ? msg[1] : 120`
+
+JavaScript-style ternary does not exist in SuperCollider. Use nil-coalescing: `msg[1] ?? 120`.
 
 ## SuperCollider crashes: `qt.qpa.xcb: could not connect to display`
 
