@@ -2,7 +2,7 @@
 # Pi SC 3.13: external jackd + scsynth + sclang (SSH-safe: progress pings, optional phases).
 #
 # Full run (use tmux/screen if SSH is flaky):
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/aa19495/scripts/pi_jack_scsynth_hotfix.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/5a39ebf/scripts/pi_jack_scsynth_hotfix.sh | bash
 #
 # Split phases (env must apply to bash, not curl — use bash -s or env before bash):
 #   curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s fetch-only
