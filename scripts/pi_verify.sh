@@ -86,6 +86,16 @@ free_alsa() {
   sleep 1.0
 }
 
+prepare_host() {
+  log "prepare host (stop services, free ALSA)"
+  sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
+  sudo systemctl stop pi-ambient-synth.service 2>/dev/null || true
+  sudo systemctl stop supercollider.service 2>/dev/null || true
+  pkill -x sclang 2>/dev/null || true
+  free_alsa
+  sleep 2.0
+}
+
 stack_up() {
   pgrep -x jackd >/dev/null && pgrep -x scsynth >/dev/null || return 1
   ls /dev/shm/jack* 1>/dev/null 2>&1 || return 1
@@ -227,6 +237,7 @@ do_services() {
 
 case "$PHASE" in
   all)
+    prepare_host
     do_sync
     do_audio
     do_engine
@@ -237,6 +248,7 @@ case "$PHASE" in
   engine) do_engine; log "engine done" ;;
   services) do_services; log "services done" ;;
   full)
+    prepare_host
     do_sync
     do_audio
     do_engine
