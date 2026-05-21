@@ -29,12 +29,10 @@ install_sc_systemd_units() {
   if [[ -f "$root/systemd/pi-ambient-synth.service" ]]; then
     sudo cp "$root/systemd/pi-ambient-synth.service" /etc/systemd/system/pi-ambient-synth.service
   fi
-  # shellcheck disable=SC2016
-  sudo mkdir -p /etc/systemd/system/pi-ambient-synth.service.d
-  sudo tee /etc/systemd/system/pi-ambient-synth.service.d/midi.conf >/dev/null <<'EOF'
-[Service]
-Environment=PI_MIDI_MAIN_THREAD=1
-EOF
+  if [[ -f "$root/systemd/pi-ambient-synth-midi.service" ]]; then
+    sudo cp "$root/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/
+    sudo systemctl enable pi-ambient-synth-midi.service 2>/dev/null || true
+  fi
   sudo mkdir -p /etc/systemd/system/supercollider.service.d
   sudo tee /etc/systemd/system/supercollider.service.d/audio.conf >/dev/null <<EOF
 [Service]

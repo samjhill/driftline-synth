@@ -21,13 +21,13 @@ mkdir -p "$ROOT/scripts/lib"
 pi_rsync "$ROOT/scripts/pi_verify.sh" "$ROOT/scripts/pi_e2e_verify.sh" \
   "$ROOT/scripts/simulate_midi_e2e.py" "$ROOT/scripts/test_osc.py" \
   "$ROOT/scripts/start_scsynth_alsa.sh" "$ROOT/scripts/run_sclang_engine.sh" \
-  "$ROOT/scripts/engine_smoke_pi.sh" "$ROOT/scripts/restart_synth_services.sh" \
-  "$ROOT/scripts/recover_pi_audio.sh" \
+  "$ROOT/scripts/engine_smoke_pi.sh"   "$ROOT/scripts/restart_synth_services.sh" "$ROOT/scripts/recover_pi_audio.sh" \
+  "$ROOT/scripts/pi_midi_bridge.py" \
   "$HOST:$REMOTE/scripts/"
 pi_rsync "$ROOT/scripts/lib/audio_stack.sh" "$HOST:$REMOTE/scripts/lib/"
 pi_rsync "$ROOT/synth/pi_bind_port.scd" "$ROOT/synth/ambient_engine.scd" "$HOST:$REMOTE/synth/"
 pi_rsync "$ROOT/systemd/supercollider.service" "$ROOT/systemd/pi-ambient-synth.service" \
-  "$HOST:$REMOTE/systemd/"
+  "$ROOT/systemd/pi-ambient-synth-midi.service" "$HOST:$REMOTE/systemd/"
 pi_rsync "$ROOT/src/" "$HOST:$REMOTE/src/"
 pi_rsync "$ROOT/config/default.yaml" "$HOST:$REMOTE/config/"
 
