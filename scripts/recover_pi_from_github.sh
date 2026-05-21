@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/recover_pi_from_github.sh | bash
 set -euo pipefail
 
-INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
+INSTALL_DIR="/home/pi/pi-ambient-synth"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 BRANCH="${GITHUB_BRANCH:-main}"
@@ -38,12 +38,18 @@ mkdir -p "$tmpdir/extract"
 tar -xzf "$tmpdir/src.tar.gz" -C "$tmpdir/extract"
 extracted="$(find "$tmpdir/extract" -maxdepth 1 -type d ! -path "$tmpdir/extract" | head -1)"
 
+if [[ ! -f "$extracted/install.sh" || ! -f "$extracted/src/main.py" ]]; then
+  echo "ERROR: GitHub archive is not a valid project tree" >&2
+  exit 1
+fi
+mkdir -p "$INSTALL_DIR"
+sudo chown -R pi:pi "$INSTALL_DIR" 2>/dev/null || true
 rsync -a --delete \
-  --exclude '.venv' \
-  --exclude '.git' \
-  --exclude 'state' \
-  --exclude '__pycache__' \
-  --exclude '.pytest_cache' \
+  --exclude '.venv/' \
+  --exclude '.git/' \
+  --exclude 'state/' \
+  --exclude '__pycache__/' \
+  --exclude '.pytest_cache/' \
   --exclude '.deploy_sha' \
   "$extracted/" "$INSTALL_DIR/"
 sudo chown -R pi:pi "$INSTALL_DIR"

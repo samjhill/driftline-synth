@@ -167,6 +167,22 @@ bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
 
 The page should then show a 7–12 character Git commit id (e.g. `281a96c`).
 
+## rsync errors: `cannot delete ... dev/`, `boot/`, `Permission denied` on install
+
+This means **`rsync --delete` targeted the wrong directory** (often `/` when `INSTALL_DIR` was empty) or files under `~/pi-ambient-synth` are **owned by root** from a previous deploy.
+
+**Do not** run manual `rsync --delete` to `~`, `/`, or `/boot`.
+
+Recovery:
+
+```bash
+sudo systemctl stop pi-ambient-synth-deploy.timer
+curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/fix_install_permissions.sh | bash
+curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/recover_pi_from_github.sh | bash
+```
+
+Recent `pi-deploy-sync.sh` hard-codes `INSTALL_DIR=/home/pi/pi-ambient-synth` and refuses unsafe targets.
+
 ## Deploy log shows `source=boot` every minute / SuperCollider `ABRT`
 
 If the deploy log repeats `Mode=sync source=boot` and `Rsync from boot`, the Pi was re-loading **boot** `deploy.conf` on top of `/etc/pi-ambient-synth/deploy.conf` (fixed in recent `pi-deploy-sync.sh`). Until GitHub pull runs, `supercollider.service` may still point at bare `sclang` (no headless Qt) and crash with `signal=ABRT`.
