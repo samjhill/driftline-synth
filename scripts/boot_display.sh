@@ -43,13 +43,13 @@ find_script() {
 }
 
 find_python() {
-  # Prefer system Python for gpiozero/lgpio (venv copy can break lgpio HOME paths).
-  if /usr/bin/python3 -c "import gpiozero, spidev" 2>/dev/null; then
-    echo /usr/bin/python3
-    return 0
-  fi
+  # Prefer venv (PIL, yaml, gpiozero+lgpio via system-site-packages); lazy imports avoid numpy on status-only runs.
   if [[ -x "$INSTALL_DIR/.venv/bin/python" ]]; then
     echo "$INSTALL_DIR/.venv/bin/python"
+    return 0
+  fi
+  if /usr/bin/python3 -c "import gpiozero, spidev, PIL" 2>/dev/null; then
+    echo /usr/bin/python3
     return 0
   fi
   command -v python3 || echo python3

@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=8
+EINK_REFRESH_VERSION=9
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -106,11 +106,28 @@ if [[ ! -x "$INSTALL_DIR/scripts/boot_display.sh" ]]; then
   exit 1
 fi
 
+force_free_gpio() {
+  local dev
+  echo "==> Releasing kernel GPIO holders..."
+  sudo pkill -f '/home/pi/pi-ambient-synth.*(main\.py|show_status\.py)' 2>/dev/null || true
+  sudo pkill -f 'boot_display\.sh' 2>/dev/null || true
+  sleep 1
+  for dev in /dev/gpiochip* /dev/gpiomem*; do
+    [[ -e "$dev" ]] || continue
+    sudo fuser -k "$dev" 2>/dev/null || true
+  done
+  sleep 2
+}
+
 stop_eink_clients() {
   echo "==> Stopping services that may hold e-ink GPIO..."
   sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
-  sudo systemctl stop pi-ambient-synth pi-ambient-synth-deploy.service 2>/dev/null || true
+  sudo systemctl stop \
+    pi-ambient-synth \
+    pi-ambient-synth-deploy.service \
+    pi-ambient-synth-network-announce.service 2>/dev/null || true
   sleep 2
+  force_free_gpio
 }
 
 start_eink_clients() {
@@ -158,6 +175,7 @@ run_boot_display() {
     if [[ "$attempt" -lt 3 ]]; then
       echo "==> E-ink attempt $attempt failed; releasing GPIO and retrying..."
       release_eink_gpio
+      force_free_gpio
     fi
   done
   return "$rc"
