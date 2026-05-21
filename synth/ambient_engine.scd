@@ -3,23 +3,14 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest, waitForServerRunning, blockSleep;
+var port, useAlsaSynth, engineTest, blockSleep, bootDone, bootOk;
 
-// Pi SC 3.13: no s.sync / Condition.hang / Thread.sleep on main. Block with unix sleep.
+// Pi SC 3.13: s.sync / Condition.hang fail on main thread — sync inside fork, poll with unix sleep.
 blockSleep = { |sec|
 	("sleep " ++ sec.asString).unixCmd;
 };
-
-waitForServerRunning = { |srv, timeout|
-	var t0 = SystemClock.seconds;
-	while { (SystemClock.seconds - t0) < timeout } {
-		if(srv.serverRunning == true, { ^true });
-		srv.sendMsg(\status);
-		if(srv.respondsTo(\ping), { srv.ping });
-		blockSleep.(0.05);
-	};
-	srv.serverRunning == true;
-};
+bootDone = 0;
+bootOk = false;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -74,35 +65,44 @@ patchParams[\root_note] = 48;
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackExternal)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackFork)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-if(useAlsaSynth, {
-	// scsynth started by scripts/start_scsynth_alsa.sh (jackd + JACK client)
-	if(s.options.respondsTo(\booting), { s.options.booting = false });
-	s.sendMsg(\status);
-	if(waitForServerRunning.(s, 12), {
+fork {
+	if(useAlsaSynth, {
+		if(s.options.respondsTo(\booting), { s.options.booting = false });
+		s.sync;
+		bootOk = (s.serverRunning == true);
+	}, {
+		Server.killAll;
+		if(s.serverRunning == true, {
+			s.quit;
+			0.5.wait;
+		});
+		"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
+		s.boot(~audioDevice);
+		s.sync;
+		bootOk = (s.serverRunning == true);
+	});
+	bootDone = 1;
+};
+while { bootDone < 1 } { blockSleep.(0.05) };
+if(bootOk == true, {
+	if(useAlsaSynth, {
 		("scsynth connected (external jackd) — device: %, rate: %".format(
 			~audioDevice, s.serverSampleRate
 		)).postln;
 	}, {
-		"ERROR: SC_HEADLESS_ALSA set but scsynth not on port 57110 — run start_scsynth_alsa.sh".postln;
-	});
-}, {
-	Server.killAll;
-	if(s.serverRunning == true, {
-		s.quit;
-		blockSleep.(0.5);
-	});
-	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
-	s.boot(~audioDevice);
-	if(waitForServerRunning.(s, 30), {
 		("scsynth running — device: %, rate: %, out ch: %".format(
 			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
 		)).postln;
+	});
+}, {
+	if(useAlsaSynth, {
+		"ERROR: SC_HEADLESS_ALSA set but scsynth not on port 57110 — run start_scsynth_alsa.sh".postln;
 	}, {
-		"ERROR: sclang not connected to scsynth after sync — pgrep scsynth; SC_AUDIO_DEVICE".postln;
+		"ERROR: sclang not connected to scsynth — pgrep scsynth; SC_AUDIO_DEVICE".postln;
 	});
 });
 
@@ -488,6 +488,14 @@ NetAddr.localAddr.port = port;
 "mkdir -p /var/lib/pi-ambient-synth && date -Iseconds > /var/lib/pi-ambient-synth/sc-engine-ready".unixCmd;
 
 if(engineTest, {
+	if(bootOk != true, {
+		"Pi Ambient Synth ENGINE_TEST failed: scsynth not connected".postln;
+		0.exit;
+	});
+	if(s.serverRunning != true, {
+		"Pi Ambient Synth ENGINE_TEST failed: server not running".postln;
+		0.exit;
+	});
 	"Pi Ambient Synth ENGINE_TEST ok".postln;
 	0.exit;
 });

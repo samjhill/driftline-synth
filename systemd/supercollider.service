@@ -6,6 +6,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+LimitMEMLOCK=infinity
 User=pi
 WorkingDirectory=/home/pi/pi-ambient-synth
 ExecStartPre=/bin/sh -c 'pkill -x scsynth 2>/dev/null || true; rm -f /var/lib/pi-ambient-synth/sc-engine-ready 2>/dev/null || true; sleep 0.35'
