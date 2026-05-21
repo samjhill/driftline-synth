@@ -17,7 +17,6 @@ export JACK_NO_START_SERVER="${JACK_NO_START_SERVER:-1}"
 # ALSA device name from `aplay -L` (e.g. plughw:0,0). Empty makes scsynth try JACK.
 export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 export SC_HEADLESS_ALSA="${SC_HEADLESS_ALSA:-1}"
-
 # Orphan scsynth from a prior crash/restart can hold ALSA while sclang has no synths.
 rm -f "$READY_MARKER" 2>/dev/null || true
 pkill -x scsynth 2>/dev/null || true
@@ -26,4 +25,4 @@ sleep 0.35
 
 # Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
 # Line-buffered stdout so systemd journal shows Booting/scsynth lines promptly.
-exec stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null
+exec stdbuf -oL -eL /usr/bin/sclang -l "$ROOT/synth/pi_bind_port.scd" "$SCD" </dev/null

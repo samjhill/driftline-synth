@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# engine_smoke_pi.sh v4 (marker sc313-jackLink)
-# Fast SuperCollider engine check on the Pi (~15–120s). No systemd restart.
-#   ~/pi-ambient-synth/scripts/engine_smoke_pi.sh              # fresh jackd+scsynth (default)
-#   ~/pi-ambient-synth/scripts/engine_smoke_pi.sh --reuse-audio  # keep stack (unreliable)
+# engine_smoke_pi.sh — Pi engine check (~30–180s). No systemd restart.
 set -euo pipefail
 
 ROOT="${PI_AMBIENT_ROOT:-/home/pi/pi-ambient-synth}"
 SCD="${ROOT}/synth/ambient_engine.scd"
+BIND="${ROOT}/synth/pi_bind_port.scd"
 LOG="${ENGINE_SMOKE_LOG:-/tmp/pi-ambient-engine-smoke.log}"
 TIMEOUT="${ENGINE_SMOKE_TIMEOUT:-180}"
 
@@ -19,7 +17,6 @@ export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 export SC_JACK_DEFAULT_INPUTS="${SC_JACK_DEFAULT_INPUTS:-}"
 export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
 export JACK_NO_START_SERVER="${JACK_NO_START_SERVER:-1}"
-
 export SC_HEADLESS_ALSA=1
 export SC_SYNTH_PORT="${SC_SYNTH_PORT:-57110}"
 
@@ -43,6 +40,10 @@ stack_up() {
   command -v nc >/dev/null && nc -u -z -w1 127.0.0.1 "$SC_SYNTH_PORT" 2>/dev/null
 }
 
+jack_up() {
+  pgrep -x jackd >/dev/null && ls /dev/shm/jack* 1>/dev/null 2>&1
+}
+
 if [[ "${1:-}" == "--restart" ]]; then
   pkill -x scsynth 2>/dev/null || true
   pkill -x jackd 2>/dev/null || true
@@ -51,8 +52,11 @@ fi
 pkill -x sclang 2>/dev/null || true
 sleep 0.35
 
-if [[ "${PI_SMOKE_NO_AUDIO:-}" == "1" ]]; then
+if [[ "${PI_SMOKE_NO_AUDIO:-}" == "1" ]] && stack_up; then
   echo "==> audio stack already up (PI_SMOKE_NO_AUDIO)"
+elif [[ "${PI_SMOKE_NO_AUDIO:-}" == "1" ]] && jack_up; then
+  echo "==> jackd up, starting scsynth only"
+  SC_JACK_ALREADY=1 "$ROOT/scripts/start_scsynth_alsa.sh"
 elif [[ "${1:-}" == "--reuse-audio" ]] && stack_up; then
   echo "==> reusing running jackd + scsynth (--reuse-audio)"
 else
@@ -77,11 +81,10 @@ if [[ ! -f "$SCD" ]]; then
   exit 1
 fi
 
-ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-jackAttach}"
+ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-selectKr}"
 if ! grep -q "$ENGINE_MARK" "$SCD"; then
   found="$(grep -o 'build sc313-[^"]*' "$SCD" | head -1 || true)"
   echo "ERROR: engine stale — want $ENGINE_MARK, file has: ${found:-<no sc313 marker>}" >&2
-  echo "  run: curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s fetch-only" >&2
   exit 1
 fi
 
@@ -91,16 +94,16 @@ rm -f /var/lib/pi-ambient-synth/sc-engine-ready 2>/dev/null || true
 set +e
 if command -v timeout &>/dev/null; then
   timeout "${TIMEOUT}s" env SC_HEADLESS_ALSA=1 SC_ENGINE_TEST=1 \
-    stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
+    stdbuf -oL -eL /usr/bin/sclang -l "$BIND" "$SCD" </dev/null >"$LOG" 2>&1
   status=$?
 else
-  env SC_HEADLESS_ALSA=1 SC_ENGINE_TEST=1 stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
+  env SC_HEADLESS_ALSA=1 SC_ENGINE_TEST=1 stdbuf -oL -eL /usr/bin/sclang -l "$BIND" "$SCD" </dev/null >"$LOG" 2>&1
   status=$?
 fi
 set -e
 
 echo "==> exit $status — highlights:"
-grep -E 'jackAttach|jackLink|jackPiUGens|jackFork|scsynth connected|Attaching sclang|Linking sclang|jackExternal|SC_AUDIO|listening on OSC|Engine synths|ENGINE_TEST|ERROR|Boolean|syntax|JackTemporary|not understood|POPen|jackd ready|scsynth ready|WARN:' "$LOG" || true
+grep -E 'bindPort|langPort|/done|status.reply|scsynth connected|Attaching|ENGINE_TEST|ERROR|Boolean|syntax|JackTemporary|jackd ready|scsynth ready|WARN:' "$LOG" || true
 
 if grep -qE 'ERROR:|MustBeBoolean|syntax error|not understood|POPen|Command line parse failed' "$LOG"; then
   echo "==> last 25 lines:" >&2
@@ -114,11 +117,4 @@ if ! grep -q 'Pi Ambient Synth ENGINE_TEST ok' "$LOG"; then
   exit 1
 fi
 
-if [[ -f /var/lib/pi-ambient-synth/sc-engine-ready ]]; then
-  echo "==> sc-engine-ready: $(cat /var/lib/pi-ambient-synth/sc-engine-ready)"
-else
-  echo "WARN: sc-engine-ready marker missing (smoke uses SC_ENGINE_TEST early exit)" >&2
-fi
-
-echo "OK — engine smoke passed. Restart services when ready:"
-echo "  sudo systemctl restart supercollider pi-ambient-synth"
+echo "OK — engine smoke passed."

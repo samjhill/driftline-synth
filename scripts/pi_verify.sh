@@ -113,14 +113,14 @@ do_sync() {
     scripts/run_sclang_engine.sh \
     scripts/engine_smoke_pi.sh \
     scripts/diagnose_scsynth_audio.sh \
+    synth/pi_bind_port.scd \
     synth/ambient_engine.scd \
     systemd/supercollider.service; do
     curl -fsSL --connect-timeout 20 --max-time 120 "${base}/${rel}" -o "$INSTALL_DIR/$rel"
   done
   chmod +x "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
-  grep -q 'sc313-jackAttach' "$INSTALL_DIR/synth/ambient_engine.scd" \
-    || grep -q 'sc313-jackLink' "$INSTALL_DIR/synth/ambient_engine.scd" \
-    || fail "ambient_engine.scd missing sc313-jackAttach marker"
+  grep -qE 'sc313-(selectKr|bindPort|sclangBoot|langPort|jackAttach|jackLink)' "$INSTALL_DIR/synth/ambient_engine.scd" \
+    || fail "ambient_engine.scd missing sc313-selectKr marker"
 }
 
 install_unit() {
@@ -179,6 +179,12 @@ do_engine() {
     do_audio
   fi
   log "engine smoke (timeout ${ENGINE_TIMEOUT}s)"
+  if ! stack_up; then
+    log "WARN: audio stack dropped before smoke — restarting audio"
+    unset PI_SMOKE_NO_AUDIO
+    do_audio
+    export PI_SMOKE_NO_AUDIO=1
+  fi
   if ! "$INSTALL_DIR/scripts/engine_smoke_pi.sh"; then
     fail "engine smoke failed"
   fi

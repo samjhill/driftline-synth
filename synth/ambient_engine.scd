@@ -6,9 +6,12 @@ var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clock
 var port, useAlsaSynth, engineTest, bootOk, scPort, tries;
 
 bootOk = false;
+port = 57120;
 
 // Pi SC 3.13: entire engine in one Routine (s.sync + 1.wait work; join/hang/sleep/unixCmd do not).
 fork {
+NetAddr.localAddr.port = port;
+("sclang OSC langPort %".format(NetAddr.localAddr.port)).postln;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -60,10 +63,9 @@ patchParams[\root_note] = 48;
 	dev;
 };
 
-port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackAttach)".postln;
+"Pi Ambient Synth engine script loading (build sc313-selectKr)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 scPort = 57110;
 if(getenv("SC_SYNTH_PORT").notNil, {
@@ -73,20 +75,36 @@ s = Server(\piAmbient, NetAddr("127.0.0.1", scPort));
 Server.default = s;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
-	// Do not s.boot — Pi SC 3.13 reboots scsynth (/quit), embeds JACK, kills external jackd.
-	"Attaching sclang to existing scsynth (port %) — no s.boot".format(scPort).postln;
+	var scAddr;
+	scAddr = NetAddr("127.0.0.1", scPort);
+	"Attaching sclang to shell scsynth (port %)".format(scPort).postln;
+	~piDoneOSC = OSCFunc({ |msg|
+		bootOk = true;
+		"scsynth /done: %".format(msg).postln;
+	}, "/done");
+	~piStatusOSC = OSCFunc({ |msg|
+		bootOk = true;
+		"scsynth /status.reply: %".format(msg).postln;
+	}, "/status.reply");
 	tries = 0;
 	while { tries < 40 } {
 		if(bootOk == true, {
 			tries = 40;
 		}, {
-			s.sendMsg(\notify, port, NetAddr("127.0.0.1", port));
-			s.sync;
+			scAddr.sendMsg("/notify", 0, port, "127.0.0.1");
+			0.15.wait;
+			scAddr.sendMsg("/status");
 			if(s.serverRunning == true, { bootOk = true });
 			tries = tries + 1;
-			0.25.wait;
+			0.2.wait;
 		});
 	};
+	~piDoneOSC.free;
+	~piStatusOSC.free;
+	if(bootOk == true, {
+		try { s.serverRunning_(true) };
+		s.sync;
+	});
 }, {
 	Server.killAll;
 	if(s.serverRunning == true, {
@@ -100,9 +118,7 @@ if(useAlsaSynth, {
 });
 if(bootOk == true, {
 	if(useAlsaSynth, {
-		("scsynth connected (external jackd) — device: %, rate: %".format(
-			~audioDevice, s.serverSampleRate
-		)).postln;
+		"scsynth connected (external jackd) — device: %".format(~audioDevice).postln;
 	}, {
 		("scsynth running — device: %, rate: %, out ch: %".format(
 			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
@@ -245,13 +261,13 @@ SynthDef(\piReverbFx, { |inBus=4, out=0, mix=0.45, room=0.8|
 
 SynthDef(\piCompanion, {
 	|root=48, gate=1, density=0.35|
-	var scale, deg, freq, sig, env, interval;
+	var scale, idx, deg, freq, sig, env, interval;
 	scale = [0, 2, 3, 5, 7, 9, 10];
-	// LFNoise0: SC 3.13 on Pi has no TWhiteNoise (added in later SC)
 	interval = LFNoise0.kr(0.08).range(3.5, 14.0);
-	// Pi SC 3.13: IRand.kr not available — use TRand.kr + floor.
-	deg = Latch.kr(TRand.kr(0, scale.size - 0.001, Dust.kr(interval)).floor.clip(0, scale.size - 1), Dust.kr(interval));
-	freq = (root + scale[deg]).midicps;
+	// Pi SC 3.13: scale[deg] needs integer index — use Select.kr.
+	idx = TRand.kr(0, scale.size, Dust.kr(interval)).floor.clip(0, scale.size - 1);
+	deg = Latch.kr(idx, Dust.kr(interval));
+	freq = (root + Select.kr(deg, scale)).midicps;
 	sig = SinOsc.ar(freq) * 0.06;
 	env = EnvGen.kr(Env.asr(1.5, 0, 4.0), gate, doneAction: 2);
 	Out.ar(4, sig * env * density);
@@ -347,7 +363,7 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		};
 };
 
-if(s.serverRunning == true, {
+if(bootOk == true, {
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 
@@ -502,12 +518,12 @@ OSCdef(\piTestBeep, { |msg|
 	});
 }, \pi_synth_test_beep);
 
-NetAddr.localAddr.port = port;
 "Pi Ambient Synth listening on OSC port %".format(port).postln;
 try {
-	PathName("/var/lib/pi-ambient-synth").mkdir;
-	File.use("/var/lib/pi-ambient-synth/sc-engine-ready", "w", { |f|
-		f.write(Date.getDate.asString);
+	var f = File("/var/lib/pi-ambient-synth/sc-engine-ready", "w");
+	if(f.notNil, {
+		f.write("ready");
+		f.close;
 	});
 } { |err|
 	("WARN: sc-engine-ready marker: %".format(err)).postln;
@@ -516,10 +532,6 @@ try {
 if(engineTest, {
 	if(bootOk != true, {
 		"Pi Ambient Synth ENGINE_TEST failed: scsynth not connected".postln;
-		0.exit;
-	});
-	if(s.serverRunning != true, {
-		"Pi Ambient Synth ENGINE_TEST failed: server not running".postln;
 		0.exit;
 	});
 	"Pi Ambient Synth ENGINE_TEST ok".postln;

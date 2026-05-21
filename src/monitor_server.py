@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import logging
 import subprocess
@@ -17,10 +18,13 @@ from config_loader import install_root, load_config, resolve_data_path
 from logging_setup import setup_logging
 from midi_controller import midi_status_summary
 from network_info import network_snapshot
-from patch_generator import PatchGenerator
+from osc_client import PATCH_OSC_KEYS, OscClient
+from patch_generator import PARAM_RANGES, PatchGenerator
+from patch_model import Patch
 from patch_resolve import resolve_current_patch
 from pisugar_battery import read_battery_snapshot
 from state_store import StateStore
+from visual_generator import VisualGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,34 @@ SERVICE_UNITS = {
     "monitor": "pi-ambient-synth-monitor.service",
     "deploy_timer": "pi-ambient-synth-deploy.timer",
 }
+
+# Web UI knobs — (key, label, optional log scale for wide numeric ranges)
+WEB_KNOBS: tuple[tuple[str, str, bool], ...] = (
+    ("oscillator_blend", "Wave blend", False),
+    ("filter_cutoff", "Filter", True),
+    ("filter_resonance", "Resonance", False),
+    ("brightness", "Brightness", False),
+    ("reverb_mix", "Reverb", False),
+    ("reverb_size", "Room", False),
+    ("delay_mix", "Delay", False),
+    ("lfo_rate", "LFO rate", False),
+    ("lfo_depth", "LFO depth", False),
+    ("drift_amount", "Drift", False),
+    ("texture_density", "Texture", False),
+    ("stereo_width", "Width", False),
+    ("sub_level", "Sub", False),
+    ("noise_level", "Noise", False),
+)
+
+WAVE_SHAPE_PRESETS: tuple[tuple[str, float], ...] = (
+    ("Sine", 0.0),
+    ("Soft", 0.25),
+    ("Blend", 0.5),
+    ("Bright", 0.75),
+    ("Saw", 1.0),
+)
+
+WEB_MORPH_SECONDS = 0.35
 
 
 def _service_state(unit: str) -> str:
@@ -310,6 +342,107 @@ def _log_block(lines: list[str], *, empty: str = "No log lines.") -> str:
     return "".join(f"<div class='log'>{_escape(line)}</div>" for line in lines)
 
 
+def _state_store(config: dict[str, Any]) -> StateStore:
+    app = config.get("app", {})
+    root = install_root()
+    return StateStore(
+        resolve_data_path(app.get("state_path", "./state/current_patch.json"), root),
+        resolve_data_path(app.get("favorites_path", "./state/favorites.json"), root),
+    )
+
+
+def _load_patch(config: dict[str, Any]) -> Patch:
+    store = _state_store(config)
+    return resolve_current_patch(config, store, PatchGenerator(config))
+
+
+def _knob_spec(key: str, label: str, log_scale: bool) -> dict[str, Any]:
+    lo, hi = PARAM_RANGES.get(key, (0.0, 1.0))
+    return {
+        "key": key,
+        "label": label,
+        "min": lo,
+        "max": hi,
+        "log": log_scale,
+        "step": (hi - lo) / 200 if not log_scale else None,
+    }
+
+
+def _controls_payload(config: dict[str, Any]) -> dict[str, Any]:
+    patch = _load_patch(config)
+    patch_data = patch.to_dict()
+    knobs = [_knob_spec(key, label, log_scale) for key, label, log_scale in WEB_KNOBS]
+    vol = float(config.get("audio", {}).get("default_volume", 0.65))
+    return {
+        "patch": patch_data,
+        "knobs": knobs,
+        "wave_presets": [{"name": n, "blend": v} for n, v in WAVE_SHAPE_PRESETS],
+        "master_volume": vol,
+        "osc_weights": _osc_weights(patch.oscillator_blend),
+    }
+
+
+def _osc_weights(blend: float) -> dict[str, float]:
+    """Match SuperCollider Mix levels in piAmbientVoice."""
+    b = max(0.0, min(1.0, blend))
+    return {
+        "saw": 0.35 * b,
+        "sine": 0.4 * (1.0 - b),
+        "triangle": 0.25 * b,
+    }
+
+
+def _sigil_png(config: dict[str, Any], patch: Patch | None = None) -> bytes:
+    p = patch or _load_patch(config)
+    img = VisualGenerator(config).render_patch(p)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _apply_web_param(
+    config: dict[str, Any], name: str, value: float, *, persist: bool = True
+) -> dict[str, Any]:
+    if name == "master_volume":
+        OscClient(config).set_param("master_volume", value)
+        return {"ok": True, "name": name, "value": value}
+
+    if name not in PATCH_OSC_KEYS:
+        return {"ok": False, "error": f"unknown param: {name}"}
+
+    val = float(value)
+    lo, hi = PARAM_RANGES.get(name, (None, None))
+    if lo is not None and hi is not None:
+        val = max(lo, min(hi, val))
+
+    osc = OscClient(config)
+    osc._client.send_message("/pi_synth/morph_time", [WEB_MORPH_SECONDS])
+    osc.set_param(name, val)
+
+    if persist:
+        store = _state_store(config)
+        patch = _load_patch(config)
+        if hasattr(patch, name):
+            setattr(patch, name, val)
+            try:
+                store.save_current(patch)
+            except OSError as e:
+                logger.warning("Could not persist patch param %s: %s", name, e)
+
+    return {"ok": True, "name": name, "value": val}
+
+
+def _parse_post_json(handler: BaseHTTPRequestHandler) -> dict[str, Any] | None:
+    length = int(handler.headers.get("Content-Length", 0) or 0)
+    if length <= 0:
+        return None
+    try:
+        raw = handler.rfile.read(length)
+        return json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
 def _html_page(status: dict[str, Any]) -> str:
     net = status.get("network") or {}
     ip = net.get("primary_ip") or "—"
@@ -417,51 +550,346 @@ def _html_page(status: dict[str, Any]) -> str:
     else:
         bat_row = row("PiSugar battery", "unavailable (pisugar-server?)", ok=None)
 
+    patch_json = json.dumps(status.get("patch") or {}, separators=(",", ":"))
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="5">
   <title>{_escape(status.get("app", "Pi Ambient Synth"))} — Monitor</title>
   <style>
     :root {{ font-family: system-ui, sans-serif; background: #0f1419; color: #e7ecef; }}
-    body {{ margin: 1.5rem; max-width: 56rem; }}
-    h1 {{ font-size: 1.35rem; font-weight: 600; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; padding: 1.25rem 1.5rem 2rem; }}
+    .layout {{ display: grid; gap: 1.25rem; max-width: 72rem; }}
+    @media (min-width: 900px) {{ .layout {{ grid-template-columns: 1fr 22rem; align-items: start; }} }}
+    h1 {{ font-size: 1.35rem; font-weight: 600; margin: 0 0 0.25rem; }}
     h2 {{ font-size: 0.95rem; font-weight: 600; color: #9ab; margin: 0 0 0.5rem; }}
-    .ip {{ font-size: 1.75rem; letter-spacing: 0.02em; margin: 0.5rem 0 1rem; }}
+    .ip {{ font-size: 1.75rem; letter-spacing: 0.02em; margin: 0.25rem 0 0.75rem; }}
     a {{ color: #7ec8e3; }}
-    table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }}
+    table {{ border-collapse: collapse; width: 100%; margin: 0.75rem 0; }}
     th, td {{ text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid #2a3540; }}
     th {{ color: #9ab; width: 11rem; font-weight: 500; vertical-align: top; }}
     .ok {{ color: #6ddb8a; }}
     .bad {{ color: #f08080; }}
     .log {{ font-family: ui-monospace, monospace; font-size: 0.72rem; color: #aab; line-height: 1.35; }}
-    .muted {{ color: #667; }}
+    .muted {{ color: #667; font-size: 0.85rem; }}
     .alert {{ background: #2a1a1a; border: 1px solid #633; color: #f0a0a0; padding: 0.5rem 0.75rem; margin: 0.5rem 0; font-size: 0.85rem; }}
-    section {{ margin-top: 1.25rem; padding: 0.75rem; background: #141a21; border-radius: 6px; }}
+    section {{ margin-top: 1rem; padding: 0.75rem; background: #141a21; border-radius: 6px; }}
+    .panel {{ background: #141a21; border-radius: 8px; padding: 1rem; position: sticky; top: 1rem; }}
+    .sigil-wrap {{ background: #e8ecef; border-radius: 4px; padding: 4px; margin-bottom: 0.75rem; }}
+    .sigil-wrap img {{ display: block; width: 100%; height: auto; image-rendering: pixelated; }}
+    #wave-canvas {{ width: 100%; height: 72px; background: #0a0e12; border-radius: 4px; display: block; margin: 0.5rem 0; }}
+    .wave-presets {{ display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.75rem; }}
+    .wave-presets button {{
+      flex: 1 1 auto; min-width: 3.2rem; padding: 0.35rem 0.5rem; font-size: 0.72rem;
+      background: #1e2830; color: #cde; border: 1px solid #3a4a55; border-radius: 4px; cursor: pointer;
+    }}
+    .wave-presets button.active {{ background: #2a4a5a; border-color: #7ec8e3; color: #fff; }}
+    .knob-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.65rem 0.5rem; }}
+    .knob-cell {{ text-align: center; }}
+    .knob-dial {{
+      width: 3.4rem; height: 3.4rem; margin: 0 auto; border-radius: 50%;
+      background: conic-gradient(from 225deg, #3a5a6a 0deg, #1a242c 270deg);
+      border: 2px solid #2a3540; position: relative; cursor: ns-resize; touch-action: none;
+    }}
+    .knob-dial::after {{
+      content: ''; position: absolute; left: 50%; top: 18%; width: 3px; height: 28%;
+      background: #7ec8e3; transform-origin: 50% 100%; transform: translateX(-50%) rotate(0deg);
+      border-radius: 2px;
+    }}
+    .knob-label {{ display: block; font-size: 0.68rem; color: #9ab; margin-top: 0.25rem; }}
+    .knob-val {{ display: block; font-size: 0.65rem; color: #667; font-variant-numeric: tabular-nums; }}
+    .vol-row {{ margin-top: 0.75rem; }}
+    .vol-row input[type=range] {{ width: 100%; accent-color: #7ec8e3; }}
+    .status-refresh {{ margin-left: 0.5rem; }}
   </style>
 </head>
 <body>
   <h1>{_escape(status.get("app", "Pi Ambient Synth"))}</h1>
   <p class="ip">{_escape(ip)}</p>
   <p><a href="{_escape(monitor_url)}">{_escape(monitor_url)}</a> · {_escape(mdns)} · {_escape(all_ips)}</p>
-  <p class="muted">Snapshot {_escape(collected)} · auto-refresh 5s · LAN only (no auth)</p>
-  {"".join(alerts)}
-  <table>
-    {row("Hostname", host)}
-    {row("SSH", f"ssh pi@{mdns}")}
-    {row("MIDI keyboard", midi_label, ok=midi_ok)}
-    {row("MIDI inputs", midi_inputs)}
-    {row("Current patch", patch_sum)}
-    {row("Deploy SHA", sha)}
-    {row("SC engine", status.get("sc_engine_ready") or "not ready (no /var/lib/pi-ambient-synth/sc-engine-ready)")}
-    {bat_row}
-    {net_row}
-    {svc_rows}
-    {detail_rows}
-  </table>
-  {log_sections}
+  <p class="muted">Status <span id="status-time">{_escape(collected)}</span>
+    <button type="button" class="status-refresh" id="btn-refresh-status">Refresh</button> · LAN only (no auth)</p>
+  <div class="layout">
+    <div class="main-col">
+      <div id="status-alerts">{"".join(alerts)}</div>
+      <table id="status-table">
+        {row("Hostname", host)}
+        {row("SSH", f"ssh pi@{mdns}")}
+        {row("MIDI keyboard", midi_label, ok=midi_ok)}
+        {row("MIDI inputs", midi_inputs)}
+        {row("Current patch", patch_sum, ok=None)}
+        {row("Deploy SHA", sha)}
+        {row("SC engine", status.get("sc_engine_ready") or "not ready (no /var/lib/pi-ambient-synth/sc-engine-ready)")}
+        {bat_row}
+        {net_row}
+        {svc_rows}
+        {detail_rows}
+      </table>
+      {log_sections}
+    </div>
+    <aside class="panel" id="controls-panel">
+      <h2>Sound controls</h2>
+      <p class="muted" id="patch-title">{_escape(patch_sum)}</p>
+      <div class="sigil-wrap">
+        <img id="sigil" src="/api/sigil.png" alt="Patch sigil visualization" width="234" height="114">
+      </div>
+      <h2>Wave shape</h2>
+      <canvas id="wave-canvas" width="280" height="72" aria-label="Oscillator mix waveform"></canvas>
+      <div class="wave-presets" id="wave-presets"></div>
+      <div class="knob-grid" id="knob-grid"></div>
+      <div class="vol-row">
+        <label class="knob-label" for="master-vol">Master volume</label>
+        <input type="range" id="master-vol" min="0" max="1" step="0.01">
+      </div>
+    </aside>
+  </div>
+  <script type="application/json" id="boot-patch">{patch_json}</script>
+  <script>
+  (function() {{
+    const bootPatch = JSON.parse(document.getElementById('boot-patch').textContent || '{{}}');
+    let controls = null;
+    let paramValues = {{ ...bootPatch }};
+    let knobDrag = null;
+
+    function oscWeights(blend) {{
+      const b = Math.max(0, Math.min(1, blend));
+      return {{ saw: 0.35 * b, sine: 0.4 * (1 - b), tri: 0.25 * b }};
+    }}
+
+    function normVal(spec, v) {{
+      const lo = spec.min, hi = spec.max;
+      if (spec.log && hi > lo && v > 0) {{
+        const ln = Math.log(v / lo) / Math.log(hi / lo);
+        return Math.max(0, Math.min(1, ln));
+      }}
+      return (v - lo) / (hi - lo);
+    }}
+
+    function valFromNorm(spec, t) {{
+      const lo = spec.min, hi = spec.max;
+      t = Math.max(0, Math.min(1, t));
+      if (spec.log && hi > lo) return lo * Math.pow(hi / lo, t);
+      return lo + t * (hi - lo);
+    }}
+
+    function fmtVal(key, v) {{
+      if (key === 'filter_cutoff') return Math.round(v) + ' Hz';
+      if (key === 'oscillator_blend') return Math.round(v * 100) + '%';
+      return v < 0.1 ? v.toFixed(3) : v.toFixed(2);
+    }}
+
+    function drawWave(blend) {{
+      const c = document.getElementById('wave-canvas');
+      const ctx = c.getContext('2d');
+      const w = c.width, h = c.height;
+      ctx.fillStyle = '#0a0e12';
+      ctx.fillRect(0, 0, w, h);
+      const wts = oscWeights(blend);
+      const pts = 200;
+      ctx.beginPath();
+      ctx.strokeStyle = '#7ec8e3';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i <= pts; i++) {{
+        const ph = (i / pts) * Math.PI * 2;
+        const saw = 2 * (ph / (Math.PI * 2) - Math.floor(ph / (Math.PI * 2) + 0.5));
+        const sine = Math.sin(ph);
+        const tri = 2 * Math.abs(2 * (ph / (Math.PI * 2) - Math.floor(ph / (Math.PI * 2) + 0.5))) - 1;
+        const y = (saw * wts.saw + sine * wts.sine + tri * wts.tri);
+        const px = (i / pts) * w;
+        const py = h * 0.5 - y * (h * 0.38);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }}
+      ctx.stroke();
+      ctx.fillStyle = '#667';
+      ctx.font = '10px system-ui';
+      ctx.fillText('saw ' + Math.round(wts.saw * 100) + '% · sine ' + Math.round(wts.sine * 100) + '% · tri ' + Math.round(wts.tri * 100) + '%', 6, h - 6);
+    }}
+
+    function refreshSigil() {{
+      document.getElementById('sigil').src = '/api/sigil.png?t=' + Date.now();
+    }}
+
+    async function setParam(name, value) {{
+      const res = await fetch('/api/param', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ name, value }}),
+      }});
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'set failed');
+      paramValues[name] = data.value;
+      if (name === 'oscillator_blend') {{
+        drawWave(data.value);
+        updateWavePresetActive(data.value);
+      }}
+      if (name === 'texture_density' || name === 'filter_cutoff' || name === 'reverb_size' || name === 'brightness' || name === 'stereo_width' || name === 'drift_amount')
+        refreshSigil();
+      return data;
+    }}
+
+    function updateWavePresetActive(blend) {{
+      document.querySelectorAll('#wave-presets button').forEach(btn => {{
+        const t = parseFloat(btn.dataset.blend);
+        btn.classList.toggle('active', Math.abs(t - blend) < 0.06);
+      }});
+    }}
+
+    function buildKnobs() {{
+      const grid = document.getElementById('knob-grid');
+      grid.innerHTML = '';
+      (controls.knobs || []).forEach(spec => {{
+        if (spec.key === 'oscillator_blend') return;
+        const cell = document.createElement('div');
+        cell.className = 'knob-cell';
+        const dial = document.createElement('div');
+        dial.className = 'knob-dial';
+        dial.dataset.key = spec.key;
+        const label = document.createElement('span');
+        label.className = 'knob-label';
+        label.textContent = spec.label;
+        const valEl = document.createElement('span');
+        valEl.className = 'knob-val';
+        const v0 = paramValues[spec.key] ?? spec.min;
+        valEl.textContent = fmtVal(spec.key, v0);
+        function setDialAngle(norm) {{
+          dial.style.setProperty('--angle', (225 + norm * 270) + 'deg');
+          dial.querySelector?.('style') || dial.style;
+          const after = dial;
+          after.style.setProperty('--knob-rot', (225 + norm * 270) + 'deg');
+          dial.style.background = 'conic-gradient(from 225deg, #3a5a6a ' + (norm * 270) + 'deg, #1a242c 270deg)';
+          const needle = dial;
+          needle.style.setProperty('--rot', (225 + norm * 270) + 'deg');
+        }}
+        const norm = normVal(spec, v0);
+        dial.style.background = 'conic-gradient(from 225deg, #3a5a6a ' + (norm * 270) + 'deg, #1a242c 270deg)';
+        const style = document.createElement('style');
+        style.textContent = '.knob-dial[data-key="' + spec.key + '"]::after {{ transform: translateX(-50%) rotate(' + (225 + norm * 270) + 'deg); }}';
+        dial.appendChild(style);
+        dial.addEventListener('pointerdown', e => {{
+          knobDrag = {{ spec, dial, valEl, startY: e.clientY, startNorm: normVal(spec, paramValues[spec.key] ?? spec.min) }};
+          dial.setPointerCapture(e.pointerId);
+        }});
+        dial.addEventListener('pointermove', e => {{
+          if (!knobDrag || knobDrag.spec.key !== spec.key) return;
+          const dy = knobDrag.startY - e.clientY;
+          const n = Math.max(0, Math.min(1, knobDrag.startNorm + dy / 120));
+          const v = valFromNorm(spec, n);
+          valEl.textContent = fmtVal(spec.key, v);
+          dial.style.background = 'conic-gradient(from 225deg, #3a5a6a ' + (n * 270) + 'deg, #1a242c 270deg)';
+          style.textContent = '.knob-dial[data-key="' + spec.key + '"]::after {{ transform: translateX(-50%) rotate(' + (225 + n * 270) + 'deg); }}';
+        }});
+        dial.addEventListener('pointerup', async e => {{
+          if (!knobDrag || knobDrag.spec.key !== spec.key) return;
+          const dy = knobDrag.startY - e.clientY;
+          const n = Math.max(0, Math.min(1, knobDrag.startNorm + dy / 120));
+          knobDrag = null;
+          try {{ await setParam(spec.key, valFromNorm(spec, n)); }} catch (err) {{ console.warn(err); }}
+        }});
+        cell.appendChild(dial);
+        cell.appendChild(label);
+        cell.appendChild(valEl);
+        grid.appendChild(cell);
+      }});
+      const blendSpec = (controls.knobs || []).find(k => k.key === 'oscillator_blend');
+      if (blendSpec) {{
+        const cell = document.createElement('div');
+        cell.className = 'knob-cell';
+        cell.style.gridColumn = '1 / -1';
+        const dial = document.createElement('div');
+        dial.className = 'knob-dial';
+        dial.dataset.key = 'oscillator_blend';
+        const label = document.createElement('span');
+        label.className = 'knob-label';
+        label.textContent = blendSpec.label;
+        const valEl = document.createElement('span');
+        valEl.className = 'knob-val';
+        const v0 = paramValues.oscillator_blend ?? 0.5;
+        valEl.textContent = fmtVal('oscillator_blend', v0);
+        const norm = normVal(blendSpec, v0);
+        const style = document.createElement('style');
+        style.textContent = '.knob-dial[data-key="oscillator_blend"]::after {{ transform: translateX(-50%) rotate(' + (225 + norm * 270) + 'deg); }}';
+        dial.style.background = 'conic-gradient(from 225deg, #3a5a6a ' + (norm * 270) + 'deg, #1a242c 270deg)';
+        dial.appendChild(style);
+        dial.addEventListener('pointerdown', e => {{
+          knobDrag = {{ spec: blendSpec, dial, valEl, startY: e.clientY, startNorm: norm }};
+          dial.setPointerCapture(e.pointerId);
+        }});
+        dial.addEventListener('pointermove', e => {{
+          if (!knobDrag) return;
+          const dy = knobDrag.startY - e.clientY;
+          const n = Math.max(0, Math.min(1, knobDrag.startNorm + dy / 120));
+          const v = valFromNorm(blendSpec, n);
+          valEl.textContent = fmtVal('oscillator_blend', v);
+          drawWave(v);
+          updateWavePresetActive(v);
+          dial.style.background = 'conic-gradient(from 225deg, #3a5a6a ' + (n * 270) + 'deg, #1a242c 270deg)';
+          style.textContent = '.knob-dial[data-key="oscillator_blend"]::after {{ transform: translateX(-50%) rotate(' + (225 + n * 270) + 'deg); }}';
+        }});
+        dial.addEventListener('pointerup', async e => {{
+          if (!knobDrag) return;
+          const dy = knobDrag.startY - e.clientY;
+          const n = Math.max(0, Math.min(1, knobDrag.startNorm + dy / 120));
+          knobDrag = null;
+          try {{ await setParam('oscillator_blend', valFromNorm(blendSpec, n)); }} catch (err) {{ console.warn(err); }}
+        }});
+        cell.appendChild(dial);
+        cell.appendChild(label);
+        cell.appendChild(valEl);
+        grid.appendChild(cell);
+      }}
+    }}
+
+    function buildWavePresets() {{
+      const wrap = document.getElementById('wave-presets');
+      wrap.innerHTML = '';
+      (controls.wave_presets || []).forEach(p => {{
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = p.name;
+        btn.dataset.blend = p.blend;
+        btn.addEventListener('click', async () => {{
+          try {{
+            await setParam('oscillator_blend', p.blend);
+            document.querySelectorAll('.knob-dial[data-key="oscillator_blend"] + .knob-label + .knob-val')
+              .forEach(el => {{ if (el) el.textContent = fmtVal('oscillator_blend', p.blend); }});
+          }} catch (err) {{ console.warn(err); }}
+        }});
+        wrap.appendChild(btn);
+      }});
+    }}
+
+    async function loadControls() {{
+      const res = await fetch('/api/controls');
+      controls = await res.json();
+      paramValues = {{ ...controls.patch }};
+      buildWavePresets();
+      buildKnobs();
+      const blend = paramValues.oscillator_blend ?? 0.5;
+      drawWave(blend);
+      updateWavePresetActive(blend);
+      const vol = document.getElementById('master-vol');
+      vol.value = controls.master_volume ?? 0.65;
+      const title = document.getElementById('patch-title');
+      if (controls.patch && controls.patch.name)
+        title.textContent = controls.patch.name + ' | ' + (controls.patch.scale_name || '') + ' | seed=' + controls.patch.seed;
+    }}
+
+    document.getElementById('master-vol').addEventListener('change', async e => {{
+      try {{ await setParam('master_volume', parseFloat(e.target.value)); }} catch (err) {{ console.warn(err); }}
+    }});
+
+    document.getElementById('btn-refresh-status').addEventListener('click', async () => {{
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      document.getElementById('status-time').textContent = data.collected_at || '';
+    }});
+
+    loadControls().catch(err => console.warn('controls load', err));
+  }})();
+  </script>
 </body>
 </html>"""
 
@@ -482,10 +910,42 @@ class MonitorHandler(BaseHTTPRequestHandler):
             status = collect_status(self.config)
             body = json.dumps(status, indent=2).encode("utf-8")
             self._send(200, "application/json", body)
+        elif path == "/api/controls":
+            body = json.dumps(_controls_payload(self.config), indent=2).encode("utf-8")
+            self._send(200, "application/json", body)
+        elif path == "/api/sigil.png":
+            try:
+                body = _sigil_png(self.config)
+            except Exception as e:
+                logger.warning("Sigil render failed: %s", e)
+                self._send(500, "text/plain", b"sigil render failed\n")
+                return
+            self._send(200, "image/png", body)
         elif path == "/health":
             self._send(200, "text/plain", b"ok\n")
         else:
             self._send(404, "text/plain", b"not found\n")
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path != "/api/param":
+            self._send(404, "text/plain", b"not found\n")
+            return
+        data = _parse_post_json(self)
+        if not data or "name" not in data or "value" not in data:
+            body = json.dumps({"ok": False, "error": "expected JSON {name, value}"}).encode(
+                "utf-8"
+            )
+            self._send(400, "application/json", body)
+            return
+        try:
+            result = _apply_web_param(
+                self.config, str(data["name"]), float(data["value"])
+            )
+        except (TypeError, ValueError) as e:
+            result = {"ok": False, "error": str(e)}
+        code = 200 if result.get("ok") else 400
+        self._send(code, "application/json", json.dumps(result).encode("utf-8"))
 
     def _send(self, code: int, content_type: str, body: bytes) -> None:
         self.send_response(code)

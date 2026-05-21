@@ -131,6 +131,13 @@ start_scsynth_client() {
   jack_ready || return 1
   sleep "$SCSYNTH_JACK_SETTLE_SEC"
 
+  pkill -9 -x scsynth 2>/dev/null || true
+  for _ in $(seq 1 30); do
+    port_open || break
+    sleep 0.15
+  done
+  sleep 0.5
+
   # -l is language; do not pass -z (also language on Pi SC 3.13, not zeroconf off).
   {
     echo "=== $(date -Iseconds) scsynth JACK client dev=$dev port=$PORT ==="
@@ -159,6 +166,19 @@ start_scsynth_client() {
 try_stack() {
   local dev="$1"
   start_jack "$dev" || return 1
+  if [[ "${SC_WAIT_FOR_BOOT:-}" == "1" ]]; then
+    mkdir -p "$MARKER_DIR"
+    {
+      echo "SC_SYNTH_DRIVER=jack+waitForBoot"
+      echo "SC_JACK_DEVICE=$dev"
+      echo "SC_SYNTH_PORT=$PORT"
+      echo "SC_SYNTH_RATE=$RATE"
+      echo "SC_JACK_PERIOD=$JACK_PERIOD"
+      echo "SC_JACK_NPERIODS=$JACK_NPERIODS"
+    } >"$DRIVER_FILE"
+    echo "jackd ready for s.waitForBoot dev=$dev"
+    return 0
+  fi
   start_scsynth_client "$dev"
 }
 
@@ -167,9 +187,19 @@ mkdir -p "$(dirname "$LOG")"
 
 echo "scsynth: $(scsynth -v 2>&1 | head -1 || true)"
 echo "jackd: $(command -v jackd || echo missing)"
-echo "Note: Pi SC 3.13 — external jackd + scsynth JACK client (one scsynth start per jackd)" | tee -a "$LOG"
+echo "Note: Pi SC 3.13 — external jackd + scsynth JACK client" | tee -a "$LOG"
 
 stop_audio_stack
+
+if [[ "${SC_JACK_ALREADY:-}" == "1" ]]; then
+  dev="$(jack_candidates | head -1)"
+  [[ -n "$dev" ]] || dev="hw:0,0"
+  if jack_ready && start_scsynth_client "$dev"; then
+    exit 0
+  fi
+  echo "ERROR: SC_JACK_ALREADY=1 but scsynth restart failed" >&2
+  exit 1
+fi
 
 while IFS= read -r dev; do
   [[ -n "$dev" ]] || continue

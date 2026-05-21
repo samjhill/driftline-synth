@@ -31,16 +31,31 @@
 2. Connect KeyStep USB to any Pi USB port.
 3. Connect speakers to the USB interface or Pi headphone jack.
 
-## PiSugar 2 Pro (battery on e-ink)
+## PiSugar 2 Pro / 2 Plus (battery on e-ink)
+
+PiSugar renamed **2 Pro** → **2 Plus** in docs; pick **PiSugar 2 Pro** or **PiSugar 2 Plus** in the installer (same board — not the old 4-LED PiSugar 2).
 
 Install [PiSugar Power Manager](https://docs.pisugar.com/docs/product-wiki/battery/pisugar-power-manager) and enable the server:
 
 ```bash
 wget https://cdn.pisugar.com/release/pisugar-power-manager.sh
 bash pisugar-power-manager.sh -c release
+# When prompted, select PiSugar 2 Pro / 2 Plus (2 charging LEDs on the board)
 sudo systemctl enable --now pisugar-server
 echo "get battery" | nc -U /tmp/pisugar-server.sock
+echo "get model" | nc -U /tmp/pisugar-server.sock
 ```
+
+**Wrong model** (e.g. generic PiSugar 2 with 4 LEDs) often leaves `battery:` stuck at one value (~26%). Fix without reinstall:
+
+```bash
+sudo dpkg-reconfigure pisugar-server
+# Choose PiSugar 2 Pro / PiSugar 2 Plus
+sudo systemctl restart pisugar-server
+echo "get battery" | nc -U /tmp/pisugar-server.sock
+```
+
+Web UI: `http://<pi-ip>:8421`. Config file: `/etc/pisugar-server/config.json`.
 
 The synth reads `battery: N` from `/tmp/pisugar-server.sock` (or TCP `127.0.0.1:8423`) and draws a gauge + **NN%** in the top-right of the e-ink (patch sigils and status screens). Toggle in `config/default.yaml` under `pisugar:`.
 
