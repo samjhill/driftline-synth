@@ -3,7 +3,7 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port;
+var port, bootGate;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -59,7 +59,7 @@ Server.killAll;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 // waitForBoot can hang forever when scsynth is up but sclang never sees serverRunning (Pi JACK/ALSA).
-var bootGate = Condition.new;
+bootGate = Condition.new;
 fork {
 	var timedOut = false;
 	fork {
