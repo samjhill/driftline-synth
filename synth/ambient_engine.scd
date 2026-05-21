@@ -506,8 +506,8 @@ OSCdef(\piMorphTime, { |msg|
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
 	var amp = msg[2] ?? 0.55;
-	if(s.serverRunning != true, {
-		"pi_test_beep: scsynth not running".postln;
+	if(limiterSynth.isNil, {
+		"pi_test_beep: engine not initialized (no limiterSynth)".postln;
 	}, {
 		Synth(\piAmbientVoice, [
 			\freq, freq, \amp, amp, \gate, 1, \vel, 110,

@@ -134,8 +134,9 @@ sudo usermod -aG gpio,spi,i2c,dialout,adm,audio pi 2>/dev/null || sudo usermod -
 
 fb_eink install "Services" "systemd units" "auto-start"
 echo "==> Installing systemd unit files..."
-sudo cp "$ROOT/systemd/supercollider.service" /etc/systemd/system/
-sudo cp "$ROOT/systemd/pi-ambient-synth.service" /etc/systemd/system/
+# shellcheck source=scripts/lib/audio_stack.sh
+source "$ROOT/scripts/lib/audio_stack.sh"
+install_sc_systemd_units "$ROOT"
 sudo cp "$ROOT/systemd/pi-ambient-synth-deploy.service" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-deploy.timer" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-boot-display.service" /etc/systemd/system/

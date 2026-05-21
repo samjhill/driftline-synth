@@ -264,11 +264,15 @@ restart_services() {
   if [[ "${ENABLE_SERVICES:-0}" != "1" ]]; then
     return 0
   fi
-  log "Restarting synth services"
-  sudo systemctl restart supercollider.service 2>/dev/null || sudo systemctl start supercollider.service 2>/dev/null || true
-  sleep 2
-  sudo systemctl restart pi-ambient-synth.service 2>/dev/null || sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
-  sudo systemctl restart pi-ambient-synth-monitor.service 2>/dev/null || sudo systemctl start pi-ambient-synth-monitor.service 2>/dev/null || true
+  log "Restarting synth services (clean audio teardown)"
+  if [[ -x "$INSTALL_DIR/scripts/restart_synth_services.sh" ]]; then
+    INSTALL_DIR="$INSTALL_DIR" "$INSTALL_DIR/scripts/restart_synth_services.sh" || true
+  else
+    sudo systemctl restart supercollider.service 2>/dev/null || true
+    sleep 20
+    sudo systemctl restart pi-ambient-synth.service 2>/dev/null || true
+  fi
+  sudo systemctl restart pi-ambient-synth-monitor.service 2>/dev/null || true
 }
 
 announce_network() {

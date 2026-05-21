@@ -64,27 +64,8 @@ resolve_ref() {
     | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])"
 }
 
-stop_audio_stack() {
-  local port="${SC_SYNTH_PORT:-57110}"
-  pkill -x scsynth 2>/dev/null || true
-  pkill -x jackd 2>/dev/null || true
-  pkill -9 -x scsynth 2>/dev/null || true
-  pkill -9 -x jackd 2>/dev/null || true
-  if command -v fuser >/dev/null 2>&1; then
-    fuser -k "${port}/udp" 2>/dev/null || true
-  fi
-  sleep 1.0
-  rm -f /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true
-}
-
-free_alsa() {
-  for svc in pipewire pipewire-pulse wireplumber pulseaudio jackd2; do
-    sudo systemctl stop "$svc" 2>/dev/null || true
-  done
-  pkill -x sclang 2>/dev/null || true
-  stop_audio_stack
-  sleep 1.0
-}
+# shellcheck source=scripts/lib/audio_stack.sh
+source "$INSTALL_DIR/scripts/lib/audio_stack.sh"
 
 prepare_host() {
   log "prepare host (stop services, free ALSA)"
@@ -123,6 +104,8 @@ do_sync() {
     scripts/run_sclang_engine.sh \
     scripts/engine_smoke_pi.sh \
     scripts/diagnose_scsynth_audio.sh \
+    scripts/restart_synth_services.sh \
+    scripts/lib/audio_stack.sh \
     synth/pi_bind_port.scd \
     synth/ambient_engine.scd \
     systemd/supercollider.service; do
@@ -131,25 +114,6 @@ do_sync() {
   chmod +x "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
   grep -qE 'sc313-(selectKr|bindPort|sclangBoot|langPort|jackAttach|jackLink)' "$INSTALL_DIR/synth/ambient_engine.scd" \
     || fail "ambient_engine.scd missing sc313-selectKr marker"
-}
-
-install_units() {
-  sudo cp "$INSTALL_DIR/systemd/supercollider.service" /etc/systemd/system/supercollider.service
-  if [[ -f "$INSTALL_DIR/systemd/pi-ambient-synth.service" ]]; then
-    sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth.service" /etc/systemd/system/pi-ambient-synth.service
-  fi
-  sudo mkdir -p /etc/systemd/system/supercollider.service.d
-  sudo tee /etc/systemd/system/supercollider.service.d/audio.conf >/dev/null <<EOF
-[Service]
-LimitMEMLOCK=infinity
-Environment=JACK_NO_START_SERVER=1
-Environment=JACK_NO_AUDIO_RESERVATION=1
-Environment=SC_HEADLESS_ALSA=1
-Environment=SC_AUDIO_DEVICE=hw:0,0
-Environment=SC_JACK_PERIOD=4096
-Environment=SC_JACK_NPERIODS=3
-EOF
-  sudo systemctl daemon-reload
 }
 
 # Period sizes to try (headless Pi: larger = fewer XRuns).
@@ -164,7 +128,7 @@ audio_period_for_attempt() {
 }
 
 do_audio() {
-  install_units
+  install_sc_systemd_units "$INSTALL_DIR"
   local n period
   for n in $(seq 1 "$AUDIO_RETRIES"); do
     period="$(audio_period_for_attempt "$n")"
@@ -206,32 +170,9 @@ do_engine() {
 }
 
 do_services() {
-  log "restart supercollider + pi-ambient-synth (clean teardown first)"
-  sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
-  sudo systemctl stop pi-ambient-synth.service 2>/dev/null || true
-  sudo systemctl stop supercollider.service 2>/dev/null || true
-  pkill -x sclang 2>/dev/null || true
-  free_alsa
-  sleep 2.0
-  install_units
-  sudo systemctl daemon-reload
-  sudo systemctl reset-failed supercollider.service pi-ambient-synth.service 2>/dev/null || true
-  rm -f "$MARKER_DIR/sc-engine-ready" 2>/dev/null || true
-  sudo systemctl start supercollider.service
-  local i
-  for i in $(seq 1 60); do
-    if [[ -f "$MARKER_DIR/sc-engine-ready" ]] && systemctl is-active --quiet supercollider.service; then
-      log "supercollider active + sc-engine-ready"
-      break
-    fi
-    sleep 1
-  done
-  sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
-  sleep 5
-  systemctl is-active supercollider.service pi-ambient-synth.service 2>/dev/null | tee -a "$LOG" || true
-  sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
-  if ! systemctl is-active --quiet supercollider.service; then
-    fail "supercollider.service not active after restart"
+  log "restart supercollider + pi-ambient-synth (shared restart_synth_services.sh)"
+  if ! "$INSTALL_DIR/scripts/restart_synth_services.sh"; then
+    fail "restart_synth_services.sh failed"
   fi
 }
 
