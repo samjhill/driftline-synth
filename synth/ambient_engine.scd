@@ -54,7 +54,7 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build c9c5d30)".postln;
+"Pi Ambient Synth engine script loading (build 28400a8)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~configureServerAudio.();
@@ -378,7 +378,7 @@ if(s.serverRunning, {
 
 	OSCdef(\piCompanion, { |msg|
 		companionOn = msg[1] > 0;
-		if(companionOn and { companionSynth.isNil }, {
+		if(companionOn and: { companionSynth.isNil }, {
 			companionSynth = Synth.tail(synthGroup, \piCompanion, [
 				\root, textureRoot,
 				\density, (patchParams[\texture_density] ? 0.5) * 0.4
