@@ -129,7 +129,7 @@ cd ~/pi-ambient-synth
 
 12. **Audio modes (Pi 3 headphone jack)** — Two supported paths in `/etc/pi-ambient-synth/audio-mode.conf`:
     - **`direct_keys`** — reliable KeyStep blips via `aplay` (`bash scripts/pi_enable_direct_keys.sh`). SuperCollider stopped. Tagged baseline: `v0.1.0-pi-direct-keys`.
-    - **`ambient`** — full `ambient_engine.scd` via **jackd + scsynth** on `hw:0,0`: `bash scripts/pi_enable_ambient_engine.sh`, then `bash scripts/prove_ambient_engine_pi.sh`. Driver marker should show `SC_SYNTH_DRIVER=jack`. Switch back to blips with `pi_enable_direct_keys.sh`.
+    - **`ambient`** — full `ambient_engine.scd` via **jackd + scsynth** on `hw:0,0`, with **hybrid KeyStep blips** (`plughw:0,0` via `aplay` per note — reliable on Pi 3): `bash scripts/pi_enable_ambient_engine.sh`. Driver marker should show `SC_SYNTH_DRIVER=jack`. Switch back to blips-only with `pi_enable_direct_keys.sh`.
 
 ### One-command verify (audio + engine)
 

@@ -15,7 +15,11 @@ else
 fi
 
 sudo rm -f "$DROPIN" 2>/dev/null || true
-sudo rmdir "$DROPIN_DIR" 2>/dev/null || true
+sudo mkdir -p "$DROPIN_DIR"
+if [[ -f "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.ambient-hybrid.conf" ]]; then
+  sudo cp "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.ambient-hybrid.conf" \
+    "$DROPIN_DIR/ambient-hybrid.conf"
+fi
 
 # shellcheck source=scripts/lib/audio_stack.sh
 source "$INSTALL_DIR/scripts/lib/audio_stack.sh"

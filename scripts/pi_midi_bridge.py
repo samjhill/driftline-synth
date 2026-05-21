@@ -50,6 +50,12 @@ def main() -> int:
         "true",
         "yes",
     )
+    hybrid_keys = os.environ.get("PI_HYBRID_ALSA_KEYS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    blip_device = os.environ.get("PI_BLIP_ALSA_DEVICE", "plughw:0,0")
     blip_py = root / "scripts" / "play_keyboard_blip.py"
     py = root / ".venv/bin/python"
     jack_script = root / "scripts" / "ensure_jack_playback.sh"
@@ -58,14 +64,14 @@ def main() -> int:
     def on_note_on(note: int, velocity: int, ch: int) -> None:
         nonlocal _jack_ticks
         logger.info("bridge → note_on ch=%s note=%s vel=%s", ch, note, velocity)
-        if direct_keys and blip_py.is_file() and py.is_file():
+        if (direct_keys or hybrid_keys) and blip_py.is_file() and py.is_file():
             subprocess.Popen(
-                [str(py), str(blip_py), str(note), str(velocity), "-D", "hw:0,0", "-d", "0.2"],
+                [str(py), str(blip_py), str(note), str(velocity), "-D", blip_device, "-d", "0.22"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-        else:
+        if not direct_keys:
             logger.info("bridge → OSC note_on ch=%s note=%s vel=%s", ch, note, velocity)
             osc.note_on(note, velocity)
             _jack_ticks += 1
@@ -109,6 +115,12 @@ def main() -> int:
     )
     if direct_keys:
         logger.info("MIDI bridge DIRECT ALSA on %s (hw:0,0 blips; SuperCollider off)", midi.port_name)
+    elif hybrid_keys:
+        logger.info(
+            "MIDI bridge HYBRID on %s (%s blips + OSC → SuperCollider)",
+            midi.port_name,
+            blip_device,
+        )
     else:
         logger.info("MIDI bridge running on %s → OSC", midi.port_name)
 
