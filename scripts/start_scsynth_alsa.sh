@@ -3,12 +3,11 @@
 # Start a stable jackd on ALSA first, then scsynth as a JACK client (no -H).
 set -euo pipefail
 
-# systemd sets LimitMEMLOCK; curl|bash smoke runs without it — re-exec with prlimit when possible.
-if [[ -z "${SC_AUDIO_PRLIMIT:-}" ]] && command -v prlimit >/dev/null 2>&1; then
-  export SC_AUDIO_PRLIMIT=1
-  exec prlimit --memlock=unlimited -- "$BASH" "$0" "$@"
-fi
+# Best-effort memlock (systemd has LimitMEMLOCK; curl|bash often cannot — jackd -m still works).
 ulimit -l unlimited 2>/dev/null || true
+if command -v prlimit >/dev/null 2>&1; then
+  prlimit --pid="$$" --memlock=unlimited 2>/dev/null || true
+fi
 
 PORT="${SC_SYNTH_PORT:-57110}"
 RATE="${SC_SAMPLE_RATE:-48000}"
