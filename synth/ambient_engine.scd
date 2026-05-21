@@ -65,7 +65,7 @@ patchParams[\root_note] = 48;
 
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-oscPaths)".postln;
+"Pi Ambient Synth engine script loading (build sc313-noLinearRamp)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 scPort = 57110;
 if(getenv("SC_SYNTH_PORT").notNil, {
@@ -145,17 +145,12 @@ if(bootOk != true, {
 };
 
 ~morphParam = { |key, target, time|
+	// Pi SC 3.13: Bus.linearRamp is missing — set target immediately.
 	var busKey = ("morph_" ++ key).asSymbol;
-	if(~morphBuses.isNil, { ~morphBuses = IdentityDictionary.new });
-	if(~morphBuses[busKey].isNil, {
-		~morphBuses[busKey] = Bus.control(s, 1).set(patchParams[key] ? 0);
+	patchParams[key.asSymbol] = target;
+	if(~morphBuses.notNil and: { ~morphBuses[busKey].notNil }, {
+		~morphBuses[busKey].set(target);
 	});
-	~morphBuses[busKey].set(patchParams[key] ? 0);
-	~morphBuses[busKey].linearRamp(target, time);
-	fork {
-		time.wait;
-		patchParams[key] = target;
-	};
 };
 
 ~applyPatch = {
@@ -372,6 +367,13 @@ if(bootOk == true, {
 	limiterSynth = Synth.tail(synthGroup, \piLimiter, [\in, 0, \out, 0, \level, 0.85]);
 	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5, \amp, masterVol * 1.35]);
 	"Engine synths started (texture drone + FX chain)".postln;
+	if(useAlsaSynth, {
+		[
+			"jack_connect SuperCollider:out_1 system:playback_1 2>/dev/null || true",
+			"jack_connect SuperCollider:out_2 system:playback_2 2>/dev/null || true",
+		].do { |cmd| cmd.unixCmd };
+		"jack playback connect attempted (SuperCollider:out → system:playback)".postln;
+	});
 }, {
 	"WARN: scsynth not running — OSC registered but notes will not sound".postln;
 });
@@ -505,7 +507,8 @@ OSCdef(\piSet, { |msg|
 
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
-	var amp = msg[2] ?? 0.55;
+	var amp = msg[2] ?? 0.85;
+	"pi_test_beep OSC received % Hz".format(freq).postln;
 	if(limiterSynth.isNil, {
 		"pi_test_beep: engine not initialized (no limiterSynth)".postln;
 	}, {

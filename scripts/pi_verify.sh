@@ -112,8 +112,8 @@ do_sync() {
     curl -fsSL --connect-timeout 20 --max-time 120 "${base}/${rel}" -o "$INSTALL_DIR/$rel"
   done
   chmod +x "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
-  grep -qE 'sc313-(oscPaths|selectKr|bindPort|sclangBoot|langPort|jackAttach|jackLink)' "$INSTALL_DIR/synth/ambient_engine.scd" \
-    || fail "ambient_engine.scd missing sc313-oscPaths marker"
+  grep -qE 'sc313-(noLinearRamp|oscPaths|selectKr|bindPort|sclangBoot|langPort|jackAttach|jackLink)' "$INSTALL_DIR/synth/ambient_engine.scd" \
+    || fail "ambient_engine.scd missing sc313-noLinearRamp marker"
 }
 
 # Period sizes to try (headless Pi: larger = fewer XRuns).

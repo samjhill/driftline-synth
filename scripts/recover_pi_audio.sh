@@ -38,4 +38,9 @@ fi
 
 log "done — check: systemctl is-active supercollider pi-ambient-synth"
 systemctl is-active supercollider.service pi-ambient-synth.service 2>/dev/null || true
-grep -E 'test_beep|listening|Engine synths' <<<"$(journalctl -u supercollider -n 15 --no-pager 2>/dev/null)" || true
+echo "--- supercollider (test_beep / errors) ---"
+journalctl -u supercollider -n 25 --no-pager 2>/dev/null | grep -iE 'test_beep|Engine synths|listening|ERROR|linearRamp|jack playback' || true
+if command -v jack_lsp >/dev/null; then
+  echo "--- jack connections ---"
+  jack_lsp 2>/dev/null | head -20 || true
+fi
