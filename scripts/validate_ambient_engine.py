@@ -115,6 +115,10 @@ def validate(path: Path) -> list[str]:
             errors.append(
                 f"line {i}: TWhiteNoise missing on Pi SC 3.13 — use LFNoise0.kr(...).range(...)"
             )
+        if re.search(r"\.asBoolean\b", line):
+            errors.append(
+                f"line {i}: avoid .asBoolean in if() on Pi SC 3.13 — use == true or != true"
+            )
         if re.search(r"\.booted\b", line):
             errors.append(
                 f"line {i}: Server.booted is not in SC 3.13 — use s.serverRunning"

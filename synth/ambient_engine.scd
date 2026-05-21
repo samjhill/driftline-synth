@@ -3,7 +3,7 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth;
+var port, useAlsaSynth, engineTest;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -57,14 +57,16 @@ patchParams[\root_note] = 48;
 
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
+engineTest = getenv("SC_ENGINE_TEST").notNil;
 "Pi Ambient Synth engine script loading (build sc313-alsaExternal)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
 	// scsynth started by scripts/start_scsynth_alsa.sh (-a alsa, no JACK)
+	s.options.booting = false;
 	s.sync;
-	if(s.serverRunning.asBoolean, {
+	if(s.serverRunning == true, {
 		("scsynth connected (external ALSA) — device: %, rate: %".format(
 			~audioDevice, s.serverSampleRate
 		)).postln;
@@ -73,14 +75,14 @@ if(useAlsaSynth, {
 	});
 }, {
 	Server.killAll;
-	if(s.serverRunning.asBoolean, {
+	if(s.serverRunning == true, {
 		s.quit;
 		s.sync;
 	});
 	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 	s.boot(~audioDevice);
 	s.sync;
-	if(s.serverRunning.asBoolean, {
+	if(s.serverRunning == true, {
 		("scsynth running — device: %, rate: %, out ch: %".format(
 			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
 		)).postln;
@@ -311,7 +313,7 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		};
 };
 
-if(s.serverRunning.asBoolean, {
+if(s.serverRunning == true, {
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 
@@ -454,7 +456,7 @@ OSCdef(\piMorphTime, { |msg|
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
 	var amp = msg[2] ?? 0.55;
-	if(s.serverRunning.asBoolean.not, {
+	if(s.serverRunning != true, {
 		"pi_test_beep: scsynth not running".postln;
 	}, {
 		Synth(\piAmbientVoice, [
@@ -470,13 +472,10 @@ NetAddr.localAddr.port = port;
 "Pi Ambient Synth listening on OSC port %".format(port).postln;
 "mkdir -p /var/lib/pi-ambient-synth && date -Iseconds > /var/lib/pi-ambient-synth/sc-engine-ready".unixCmd;
 
-// Keep sclang alive for systemd: fork + block main on thread end (no N.wait on main thread).
-fork {
-	if(getenv("SC_ENGINE_TEST").notNil, {
-		"Pi Ambient Synth ENGINE_TEST ok".postln;
-		0.exit;
-	}, {
-		loop { 1.wait };
-	});
-}.threadTerminateCondition.wait;
+if(engineTest, {
+	"Pi Ambient Synth ENGINE_TEST ok".postln;
+	0.exit;
+});
+// Keep sclang alive for systemd (no N.wait on main thread).
+fork { loop { 1.wait } }.threadTerminateCondition.wait;
 )

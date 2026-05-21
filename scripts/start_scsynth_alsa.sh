@@ -28,14 +28,14 @@ pick_driver() {
   echo ALSA
 }
 
-if pgrep -x scsynth >/dev/null; then
-  echo "scsynth already running (pid $(pgrep -x scsynth | head -1))"
-  exit 0
-fi
+# Always replace any prior scsynth (often a crashed JACK instance with client name 0,0).
+pkill -x scsynth 2>/dev/null || true
+sleep 0.35
 
 DRIVER="$(pick_driver)"
-echo "Starting scsynth: -a $DRIVER -H $HWDEV -r $RATE -u $PORT"
-scsynth -u "$PORT" -i 2 -o 2 -a "$DRIVER" -H "$HWDEV" -r "$RATE" &
+LOG="${SCSYNTH_START_LOG:-/tmp/scsynth-alsa-start.log}"
+echo "Starting scsynth: -a $DRIVER -H $HWDEV -r $RATE -u $PORT (log $LOG)"
+scsynth -u "$PORT" -i 2 -o 2 -a "$DRIVER" -H "$HWDEV" -r "$RATE" >>"$LOG" 2>&1 &
 SYNTH_PID=$!
 
 for _ in $(seq 1 50); do

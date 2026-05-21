@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# engine_smoke_pi.sh v2 (marker sc313-alsaExternal)
 # Fast SuperCollider engine check on the Pi (~15–90s). No systemd restart.
 #   ~/pi-ambient-synth/scripts/engine_smoke_pi.sh
 #   ~/pi-ambient-synth/scripts/engine_smoke_pi.sh --restart   # pkill scsynth first
@@ -18,12 +19,15 @@ export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 export SC_JACK_DEFAULT_INPUTS="${SC_JACK_DEFAULT_INPUTS:-}"
 export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
 
+export SC_HEADLESS_ALSA=1
 if [[ "${1:-}" == "--restart" ]]; then
   pkill -x scsynth 2>/dev/null || true
   sleep 0.35
 fi
-export SC_HEADLESS_ALSA=1
-"$ROOT/scripts/start_scsynth_alsa.sh" || true
+if ! "$ROOT/scripts/start_scsynth_alsa.sh"; then
+  echo "ERROR: start_scsynth_alsa.sh failed — see /tmp/scsynth-alsa-start.log" >&2
+  exit 1
+fi
 
 if [[ ! -f "$SCD" ]]; then
   echo "ERROR: missing $SCD" >&2
@@ -42,7 +46,8 @@ rm -f /var/lib/pi-ambient-synth/sc-engine-ready 2>/dev/null || true
 
 set +e
 if command -v timeout &>/dev/null; then
-  timeout "${TIMEOUT}s" stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
+  timeout "${TIMEOUT}s" env SC_HEADLESS_ALSA=1 SC_ENGINE_TEST=1 \
+    stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
   status=$?
 else
   stdbuf -oL -eL /usr/bin/sclang "$SCD" </dev/null >"$LOG" 2>&1
