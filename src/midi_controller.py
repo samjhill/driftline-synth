@@ -75,6 +75,10 @@ class MidiController:
         return self._running and self._port is not None
 
     @staticmethod
+    def _is_midi_through(name: str) -> bool:
+        return "midi through" in name.lower()
+
+    @staticmethod
     def list_inputs() -> list[str]:
         try:
             return mido.get_input_names()
@@ -89,11 +93,17 @@ class MidiController:
             return None
         for keyword in self.preferred_keywords:
             for name in names:
+                if self._is_midi_through(name):
+                    continue
                 if keyword.lower() in name.lower():
                     logger.info("Selected MIDI input: %s", name)
                     return name
         if self.fallback:
-            logger.warning("Preferred device not found; using: %s", names[0])
+            for name in names:
+                if not self._is_midi_through(name):
+                    logger.warning("Preferred device not found; using: %s", name)
+                    return name
+            logger.warning("Only Midi Through available; using: %s", names[0])
             return names[0]
         return None
 
@@ -246,6 +256,8 @@ def midi_snapshot(config: dict[str, Any]) -> dict[str, Any]:
     preferred: str | None = None
     for keyword in keywords:
         for name in inputs:
+            if MidiController._is_midi_through(name):
+                continue
             if keyword.lower() in name.lower():
                 preferred = name
                 break
@@ -253,7 +265,12 @@ def midi_snapshot(config: dict[str, Any]) -> dict[str, Any]:
             break
     selected = preferred
     if not selected and inputs and fallback:
-        selected = inputs[0]
+        for name in inputs:
+            if not MidiController._is_midi_through(name):
+                selected = name
+                break
+        if not selected:
+            selected = inputs[0]
     return {
         "inputs": inputs,
         "preferred_keywords": keywords,
