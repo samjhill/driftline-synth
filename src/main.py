@@ -19,6 +19,7 @@ from eink_display import EInkDisplay
 from logging_setup import setup_logging
 from midi_controller import MidiController
 from osc_client import OscClient
+from note_names import format_active_notes
 from patch_generator import PatchGenerator
 from patch_model import Patch
 from midi_clock import MidiClock
@@ -54,6 +55,7 @@ class PiAmbientSynth:
         self._patch: Patch | None = None
         self._running = True
         self._reseed_morph = config.get("audio", {}).get("patch_morph_seconds", 6.0)
+        self._last_note_eink_time = 0.0
 
     def _resolve_patch(self) -> Patch:
         saved = self.state_store.load_current()
@@ -128,6 +130,37 @@ class PiAmbientSynth:
         bpm = self.clock.tick()
         self.osc.clock_bpm(bpm)
 
+    def _refresh_playing_note_display(
+        self,
+        velocity: int | None = None,
+        *,
+        force: bool = False,
+    ) -> None:
+        eink_cfg = self.config.get("eink", {})
+        if not eink_cfg.get("show_playing_note", True):
+            return
+        if not eink_cfg.get("enabled", True) or not self.eink.available:
+            return
+
+        now = time.monotonic()
+        interval = float(eink_cfg.get("note_refresh_seconds", 0.5))
+        if not force and now - self._last_note_eink_time < interval:
+            return
+        self._last_note_eink_time = now
+
+        active = self.play.active_notes
+        if not active:
+            if self._patch:
+                self._update_display(self._patch)
+            return
+
+        title = format_active_notes(active)
+        subtitle = f"vel {velocity}" if velocity is not None else ""
+        if self._patch:
+            patch_line = self._patch.name[:22]
+            subtitle = f"{subtitle}  {patch_line}".strip() if subtitle else patch_line
+        self.eink.show_status("playing", title, subtitle, "")
+
     def _on_note_on(self, note: int, velocity: int, channel: int) -> None:
         root, arp_changed = self.play.note_on(note)
         if arp_changed:
@@ -135,16 +168,20 @@ class PiAmbientSynth:
         if root is not None:
             self.osc.texture_root(root)
         if self.midi.is_duo_low(note):
+            self._refresh_playing_note_display(velocity)
             return
         self.osc.note_on(note, velocity)
+        self._refresh_playing_note_display(velocity)
 
     def _on_note_off(self, note: int, velocity: int, channel: int) -> None:
         root = self.play.note_off(note)
         if not self.play.hold_latched:
             self.osc.texture_root(root)
         if self.midi.is_duo_low(note):
+            self._refresh_playing_note_display(force=not self.play.active_notes)
             return
         self.osc.note_off(note, velocity)
+        self._refresh_playing_note_display(force=not self.play.active_notes)
 
     def _update_display(self, patch: Patch, favorite: bool = False) -> None:
         img = self.visual.render_patch(patch)

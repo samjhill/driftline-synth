@@ -46,6 +46,8 @@ eink:
   partial_refresh: false
   full_refresh_boot: true
   show_text_labels: true
+  show_playing_note: true
+  note_refresh_seconds: 0.5
   clear_on_shutdown: false
 
 visual:

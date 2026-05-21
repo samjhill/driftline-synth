@@ -22,6 +22,10 @@ class PlayTracker:
     def arp_active(self) -> bool:
         return self._arp_active
 
+    @property
+    def active_notes(self) -> frozenset[int]:
+        return frozenset(self._active)
+
     def set_hold(self, on: bool) -> bool:
         changed = on != self._hold_latch
         self._hold_latch = on
