@@ -417,7 +417,7 @@ if(s.serverRunning, {
 
 	NetAddr.localAddr.port = port;
 	"Pi Ambient Synth listening on OSC port %".format(port).postln;
-};
+});
 
 // Block the main sclang thread so systemd Type=simple stays active.
 while { true } { 1.wait };
