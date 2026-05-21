@@ -39,6 +39,7 @@ Environment=SC_HEADLESS_ALSA=1
 Environment=SC_AUDIO_DEVICE=hw:0,0
 Environment=SC_JACK_PERIOD=4096
 Environment=SC_JACK_NPERIODS=3
+Environment=SC_JACK_DEFAULT_OUTPUTS=system:playback_1,system:playback_2
 EOF
   sudo systemctl daemon-reload
 }

@@ -13,7 +13,7 @@ ExecStartPre=/bin/sh -c 'pkill -x sclang 2>/dev/null || true; pkill -x scsynth 2
 Environment=HOME=/home/pi
 Environment=PI_AMBIENT_ROOT=/home/pi/pi-ambient-synth
 Environment=SC_JACK_DEFAULT_INPUTS=
-Environment=SC_JACK_DEFAULT_OUTPUTS=
+Environment=SC_JACK_DEFAULT_OUTPUTS=system:playback_1,system:playback_2
 Environment=JACK_NO_AUDIO_RESERVATION=1
 Environment=JACK_NO_START_SERVER=1
 # ALSA output (Pi headphone jack). "default" fails on headless Bookworm (error -524).

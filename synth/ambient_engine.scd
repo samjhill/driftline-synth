@@ -65,7 +65,7 @@ patchParams[\root_note] = 48;
 
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-noLinearRamp)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackOutputs)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 scPort = 57110;
 if(getenv("SC_SYNTH_PORT").notNil, {

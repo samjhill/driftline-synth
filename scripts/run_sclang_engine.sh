@@ -10,7 +10,7 @@ export HOME="${HOME:-/home/pi}"
 export QT_QPA_PLATFORM=offscreen
 unset DISPLAY
 export SC_JACK_DEFAULT_INPUTS="${SC_JACK_DEFAULT_INPUTS:-}"
-export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
+export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-system:playback_1,system:playback_2}"
 # External jackd from start_scsynth_alsa.sh; do not let scsynth spawn jackdmp.
 export JACK_NO_AUDIO_RESERVATION="${JACK_NO_AUDIO_RESERVATION:-1}"
 export JACK_NO_START_SERVER="${JACK_NO_START_SERVER:-1}"
