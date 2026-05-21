@@ -27,14 +27,38 @@ jack_candidates() {
   esac
 }
 
+# scsynth OSC is UDP on 57110 (TCP checks falsely fail and we SIGTERM jackd).
 port_open() {
-  if command -v ss >/dev/null && ss -tln 2>/dev/null | grep -q ":${PORT} "; then
-    return 0
+  if command -v ss >/dev/null; then
+    if ss -uln 2>/dev/null | grep -qE ":${PORT}[[:space:]]"; then
+      return 0
+    fi
+    if ss -tln 2>/dev/null | grep -qE ":${PORT}[[:space:]]"; then
+      return 0
+    fi
   fi
-  if command -v nc >/dev/null && nc -z 127.0.0.1 "$PORT" 2>/dev/null; then
+  if command -v nc >/dev/null; then
+    if nc -u -z -w1 127.0.0.1 "$PORT" 2>/dev/null; then
+      return 0
+    fi
+    if nc -z -w1 127.0.0.1 "$PORT" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+scsynth_ready() {
+  pgrep -x scsynth >/dev/null || return 1
+  jack_ready || return 1
+  if jack_lsp 2>/dev/null | grep -qi supercollider; then
     return 0
   fi
   return 1
+}
+
+scsynth_up() {
+  port_open || scsynth_ready
 }
 
 jack_ready() {
@@ -72,21 +96,21 @@ wait_scsynth() {
     if ! kill -0 "$pid" 2>/dev/null; then
       return 1
     fi
-    if port_open; then
+    if scsynth_up; then
       break
     fi
     sleep 0.2
   done
-  if ! port_open; then
+  if ! scsynth_up; then
     return 2
   fi
-  # Embedded JACK often prints "server ready" then dies on XRun — hold a few seconds.
+  # Hold a few seconds — catch post-ready JackTemporaryException / false-negative port checks.
   for i in $(seq 1 15); do
     sleep 0.2
     if ! kill -0 "$pid" 2>/dev/null; then
       return 1
     fi
-    if ! port_open; then
+    if ! scsynth_up; then
       return 1
     fi
   done
