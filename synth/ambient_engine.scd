@@ -42,7 +42,10 @@ patchParams[\root_note] = 48;
 	var opt = srv.options;
 	var env = getenv("SC_AUDIO_DEVICE");
 	// hw:0,0 — plughw:0,0 can make JACK report client name '0,0' and break sclang↔scsynth link.
-	var dev = if(env.notNil and: { env.size > 0 }, { env }, { "hw:0,0" });
+	var dev = "hw:0,0";
+	if(env.notNil) {
+		if(env.size > 0) { dev = env };
+	};
 	opt.numOutputBusChannels = 2;
 	opt.numInputBusChannels = 2;
 	// Pi scsynth+JACK often locks to 48000; match to avoid silent or wrong-rate output.
@@ -53,7 +56,7 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc313-syncBoot)".postln;
+"Pi Ambient Synth engine script loading (build sc313-nestedIf)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 Server.killAll;
 s = Server.local;
@@ -323,7 +326,7 @@ OSCdef(\piSet, { |msg|
 			masterVol = val;
 			~textureAmp.(val);
 		}, {
-			if((key == \name) || (key == \scale_name), {
+			if((key == \name) or: { key == \scale_name }, {
 				// Python patch metadata — not a synth float param
 			}, {
 				if(val.isKindOf(String), { val = val.asString.asFloat });
@@ -392,11 +395,13 @@ OSCdef(\piMorphTime, { |msg|
 
 	OSCdef(\piCompanion, { |msg|
 		companionOn = msg[1] > 0;
-		if(companionOn and: { companionSynth.isNil }, {
-			companionSynth = Synth.tail(synthGroup, \piCompanion, [
-				\root, textureRoot,
-				\density, (patchParams[\texture_density] ? 0.5) * 0.4
-			]);
+		if(companionOn, {
+			if(companionSynth.isNil) {
+				companionSynth = Synth.tail(synthGroup, \piCompanion, [
+					\root, textureRoot,
+					\density, (patchParams[\texture_density] ? 0.5) * 0.4
+				]);
+			};
 		}, {
 			if(companionSynth.notNil, {
 				companionSynth.set(\gate, 0);
