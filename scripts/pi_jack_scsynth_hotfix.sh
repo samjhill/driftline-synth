@@ -2,10 +2,10 @@
 # Pi SC 3.13: external jackd + scsynth JACK client + sclang engine (one-shot deploy).
 #
 # Pin everything to PINNED_SHA (raw CDN + fetched files). Example:
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/0282842/scripts/pi_jack_scsynth_hotfix.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/86d275b/scripts/pi_jack_scsynth_hotfix.sh | bash
 set -euo pipefail
 
-PINNED_SHA="0282842"
+PINNED_SHA="86d275b"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
