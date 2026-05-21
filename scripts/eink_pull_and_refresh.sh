@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Pull latest code and refresh the e-ink (releases GPIO from synth briefly).
-# Works with git clones and rsync/deploy installs (no .git required).
+# No git required — Pi deploy installs use a GitHub tarball rsync.
 #
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/eink_pull_and_refresh.sh | bash
+#   curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/eink_pull_and_refresh.sh" | bash
+# Cache-bust if GitHub serves a stale copy:
+#   curl -fsSL ".../eink_pull_and_refresh.sh?t=$(date +%s)" | bash
 #
 # Optional args: phase title [subtitle] [detail]
-#   curl -fsSL .../eink_pull_and_refresh.sh | bash -s -- network "192.168.1.64"
-#
 # Env:
-#   SKIP_SYNC=1     — only refresh the display (no code update)
-#   QUICK_SYNC=1    — default; GitHub tarball rsync without full install.sh
-#   FULL_SYNC=1     — run scripts/pi-deploy-sync.sh sync when available
+#   SKIP_SYNC=1  — only refresh the display (no code update)
+#   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
+EINK_REFRESH_VERSION=3
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -20,28 +20,21 @@ PHASE="${1:-ready}"
 TITLE="${2:-Updated}"
 DETAIL="${4:-}"
 
+echo "==> eink_pull_and_refresh.sh v${EINK_REFRESH_VERSION}"
+
 deploy_label() {
   if [[ -f "$INSTALL_DIR/.deploy_sha" ]]; then
-    head -c 7 "$INSTALL_DIR/.deploy_sha"
+    head -c 7 "$INSTALL_DIR/.deploy_sha" 2>/dev/null || true
     return
   fi
-  if [[ -d "$INSTALL_DIR/.git" ]]; then
-    git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || true
-    return
-  fi
-  echo ""
+  echo "pi"
 }
 
 SUBTITLE="${3:-$(deploy_label)}"
 
-pull_from_git() {
-  echo "==> git pull ($GITHUB_BRANCH)"
-  git -C "$INSTALL_DIR" pull --ff-only origin "$GITHUB_BRANCH"
-}
-
 pull_from_github_tarball() {
-  echo "==> GitHub sync (${GITHUB_REPO}@${GITHUB_BRANCH}, no .git on Pi)"
-  local json sha tmp extracted
+  echo "==> GitHub sync (${GITHUB_REPO}@${GITHUB_BRANCH})"
+  local json sha tmp extracted short
   json="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/commits/${GITHUB_BRANCH}")"
   sha="$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")"
   short="${sha:0:7}"
@@ -72,10 +65,6 @@ pull_latest() {
     echo "ERROR: install dir missing: $INSTALL_DIR" >&2
     exit 1
   fi
-  if [[ -d "$INSTALL_DIR/.git" ]]; then
-    pull_from_git
-    return
-  fi
   if [[ "${FULL_SYNC:-0}" == "1" && -x "$INSTALL_DIR/scripts/pi-deploy-sync.sh" ]]; then
     echo "==> pi-deploy-sync.sh sync"
     bash "$INSTALL_DIR/scripts/pi-deploy-sync.sh" sync
@@ -86,6 +75,8 @@ pull_latest() {
 
 if [[ "${SKIP_SYNC:-0}" != "1" ]]; then
   pull_latest
+else
+  echo "==> SKIP_SYNC=1 (display only)"
 fi
 
 if [[ ! -x "$INSTALL_DIR/scripts/boot_display.sh" ]]; then
