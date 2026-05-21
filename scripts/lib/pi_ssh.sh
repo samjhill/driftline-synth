@@ -14,21 +14,12 @@ pi_ssh_creds_file() {
 }
 
 pi_ssh_load_password() {
-  local f key host user h
+  local f key
   f="$(pi_ssh_creds_file)"
   [[ -f "$f" ]] || return 1
-  # shellcheck disable=SC1090
   key="$(grep -E '^PASSWORD=' "$f" | head -1 | cut -d= -f2- || true)"
   if [[ -z "$key" ]]; then
     key="$(head -1 "$f" | tr -d '\r\n')"
-  fi
-  host="${PI_HOST:-$(grep -E '^HOST=' "$f" | head -1 | cut -d= -f2- || true)}"
-  if [[ -n "${PI_SSH_HOST:-}" && -n "$host" ]]; then
-    user="${PI_HOST%%@*}"
-    h="${PI_HOST#*@}"
-    if [[ "$PI_HOST" != "$host" && "${host#*@}" != "${h}" ]]; then
-      return 1
-    fi
   fi
   [[ -n "$key" ]] || return 1
   printf '%s' "$key"
