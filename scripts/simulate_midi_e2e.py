@@ -115,6 +115,8 @@ def main() -> int:
         return 3
 
     sc_before = _journal_grep("reseed")
+    # Release shift so note_on is not eaten by _handle_shift_note
+    midi._handle_message(mido.Message("control_change", control=63, value=0, channel=0))
     midi._handle_message(mido.Message("note_on", note=72, velocity=110, channel=0))
     time.sleep(0.8)
     if not note_ok:
