@@ -23,16 +23,19 @@ def main() -> int:
     osc = OscClient(config)
     gen = PatchGenerator(config)
     patch = gen.generate(seed=42)
+    print("Loud test beep (440 Hz)...")
+    osc._client.send_message("/pi_synth/test_beep", [440, 0.7])
+    time.sleep(1.0)
     print(f"Sending patch: {patch.summary()}")
     osc.send_patch(patch)
     time.sleep(0.5)
-    print("Note on C4...")
-    osc.note_on(60, 90)
-    time.sleep(1.0)
+    print("Note on C4 (vel 127)...")
+    osc.note_on(60, 127)
+    time.sleep(1.5)
     print("Note off C4...")
     osc.note_off(60)
     time.sleep(0.5)
-    print("Done.")
+    print("Done. If silent: sudo journalctl -u supercollider -n 30 | grep -E 'listening|Engine synths|playNote|test_beep|ERROR'")
     return 0
 
 

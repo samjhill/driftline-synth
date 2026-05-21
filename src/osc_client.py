@@ -11,10 +11,10 @@ from patch_model import Patch
 
 logger = logging.getLogger(__name__)
 
+# Metadata only — do not send to /pi_synth/set (breaks SC string→float handling).
+PATCH_META_KEYS = ("seed", "name", "scale_name", "evolve_enabled")
+
 PATCH_OSC_KEYS = (
-    "seed",
-    "name",
-    "scale_name",
     "root_note",
     "oscillator_blend",
     "sub_level",

@@ -44,14 +44,15 @@ patchParams[\root_note] = 48;
 	var dev = if(env.notNil && { env.size > 0 }, { env }, { "plughw:0,0" });
 	opt.numOutputBusChannels = 2;
 	opt.numInputBusChannels = 2;
-	opt.sampleRate = 44100;
+	// Pi scsynth+JACK often locks to 48000; match to avoid silent or wrong-rate output.
+	opt.sampleRate = 48000;
 	opt.device = dev;
 	"SC_AUDIO_DEVICE=% (ALSA — not JACK)".format(dev).postln;
 	dev;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build alsa-boot)".postln;
+"Pi Ambient Synth engine script loading (build osc-always)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
@@ -214,29 +215,24 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 	});
 };
 
-if(s.serverRunning, {
-	~morphBuses = IdentityDictionary.new;
-	synthGroup = Group.tail(s);
+~voices = IdentityDictionary.new;
+~noteActivity = 0;
 
-	Synth.tail(synthGroup, \piDelayFx, [\inBus, 6, \out, 0, \mix, 0.2, \dt, 0.5]);
-	Synth.tail(synthGroup, \piReverbFx, [\inBus, 4, \out, 0, \mix, 0.45, \room, 0.8]);
-	limiterSynth = Synth.tail(synthGroup, \piLimiter, [\in, 0, \out, 0, \level, 0.85]);
-	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5, \amp, masterVol * 1.35]);
-
-	~voices = IdentityDictionary.new;
-	~noteActivity = 0;
-
-	~setDuck = {
+~setDuck = {
 		var target = if(arpActive, 0.55, 1.0);
 		duckLevel = target;
 		if(textureSynth.notNil, { textureSynth.set(\duck, target) });
 	};
 
-	~playNote = { |note, vel=100|
+~playNote = { |note, vel=100|
 		var freq = note.midicps;
 		var amp = vel.linlin(0, 127, 0.18, 0.42) * masterVol;
 		~noteActivity = (~noteActivity + 1).max(0);
 		if(textureSynth.notNil, { textureSynth.set(\duck, 0.42) });
+		if(limiterSynth.isNil, {
+			"playNote: engine not initialized (no limiterSynth)".postln;
+			^this;
+		});
 		if(~voices[note].notNil, { ~voices[note].free });
 		~voices[note] = Synth.before(limiterSynth, \piAmbientVoice, [
 			\freq, freq, \amp, amp, \gate, 1, \vel, vel,
@@ -257,9 +253,9 @@ if(s.serverRunning, {
 			\delayMix, patchParams[\delay_mix] ? 0.2,
 			\revMix, patchParams[\reverb_mix] ? 0.45
 		]);
-	};
+};
 
-	~stopNote = { |note|
+~stopNote = { |note|
 		if(~voices[note].notNil, {
 			~voices[note].set(\gate, 0);
 			~voices.removeAt(note);
@@ -271,20 +267,20 @@ if(s.serverRunning, {
 				if(~noteActivity <= 0, { ~setDuck.() });
 			};
 		});
-	};
+};
 
-	~allOff = {
+~allOff = {
 		~voices.do(_.set(\gate, 0));
 		~voices.clear;
 		~noteActivity = 0;
 		~setDuck.();
-	};
+};
 
-	~panic = {
-		~allOff.();
-	};
+~panic = {
+	~allOff.();
+};
 
-	~panicBloom = {
+~panicBloom = {
 		fork {
 			2.5.wait;
 			if(textureSynth.notNil, {
@@ -295,9 +291,22 @@ if(s.serverRunning, {
 			~applyPatch.(5);
 			masterVol = 0.65;
 		};
-	};
+};
 
-	OSCdef(\piNoteOn, { |msg|
+if(s.serverRunning, {
+	~morphBuses = IdentityDictionary.new;
+	synthGroup = Group.tail(s);
+
+	Synth.tail(synthGroup, \piDelayFx, [\inBus, 6, \out, 0, \mix, 0.2, \dt, 0.5]);
+	Synth.tail(synthGroup, \piReverbFx, [\inBus, 4, \out, 0, \mix, 0.45, \room, 0.8]);
+	limiterSynth = Synth.tail(synthGroup, \piLimiter, [\in, 0, \out, 0, \level, 0.85]);
+	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5, \amp, masterVol * 1.35]);
+	"Engine synths started (texture drone + FX chain)".postln;
+}, {
+	"WARN: scsynth not running — OSC registered but notes will not sound".postln;
+});
+
+OSCdef(\piNoteOn, { |msg|
 		~playNote.(msg[1].asInteger, msg[2] ? 100);
 	}, \pi_synth_note_on);
 
@@ -305,19 +314,23 @@ if(s.serverRunning, {
 		~stopNote.(msg[1].asInteger);
 	}, \pi_synth_note_off);
 
-	OSCdef(\piSet, { |msg|
+OSCdef(\piSet, { |msg|
 		var key = msg[1].asString.asSymbol;
 		var val = msg[2];
 		if(key == \master_volume, {
 			masterVol = val;
 			~textureAmp.(val);
 		}, {
-			if(val.isKindOf(String), { val = val.asFloat });
-			~setParam.(key, val);
+			if((key == \name) || (key == \scale_name), {
+				// Python patch metadata — not a synth float param
+			}, {
+				if(val.isKindOf(String), { val = val.asString.asFloat });
+				~setParam.(key, val);
+			});
 		});
 	}, \pi_synth_set);
 
-	OSCdef(\piMorphTime, { |msg|
+OSCdef(\piMorphTime, { |msg|
 		morphTime = msg[1] ? 6.0;
 	}, \pi_synth_morph_time);
 
@@ -414,9 +427,23 @@ if(s.serverRunning, {
 		};
 	}, \pi_synth_tape_grit);
 
-	NetAddr.localAddr.port = port;
-	"Pi Ambient Synth listening on OSC port %".format(port).postln;
-});
+OSCdef(\piTestBeep, { |msg|
+	var freq = msg[1] ?? 440;
+	var amp = msg[2] ?? 0.55;
+	if(s.serverRunning.not, {
+		"pi_test_beep: scsynth not running".postln;
+	}, {
+		Synth(\piAmbientVoice, [
+			\freq, freq, \amp, amp, \gate, 1, \vel, 110,
+			\atk, 0.01, \dec, 0.1, \sus, 0.8, \rel, 0.4,
+			\cutoff, 4000, \delayMix, 0, \revMix, 0
+		]);
+		"pi_test_beep % Hz".format(freq).postln;
+	});
+}, \pi_synth_test_beep);
+
+NetAddr.localAddr.port = port;
+"Pi Ambient Synth listening on OSC port %".format(port).postln;
 
 // Block the main sclang thread so systemd Type=simple stays active (skip when SC_ENGINE_TEST=1).
 if(getenv("SC_ENGINE_TEST").notNil, {
