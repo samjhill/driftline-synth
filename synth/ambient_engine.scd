@@ -3,10 +3,8 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest, bootDone, bootOk, bootWaitUntil;
+var port, useAlsaSynth, engineTest, bootOk, bootThread;
 
-// Pi SC 3.13: no unixCmd (Popen blocked), no s.sync/hang on main — sync in fork, spin until bootDone.
-bootDone = 0;
 bootOk = false;
 
 patchParams = IdentityDictionary.new;
@@ -66,7 +64,8 @@ engineTest = getenv("SC_ENGINE_TEST").notNil;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-fork {
+// Pi SC 3.13: s.sync only inside a Routine; Thread:join blocks main (no CPU spin / unixCmd).
+bootThread = fork {
 	if(useAlsaSynth, {
 		if(s.options.respondsTo(\booting), { s.options.booting = false });
 		s.sync;
@@ -82,14 +81,8 @@ fork {
 		s.sync;
 		bootOk = (s.serverRunning == true);
 	});
-	bootDone = 1;
 };
-bootWaitUntil = SystemClock.seconds + 30;
-while { (bootDone < 1) and: { SystemClock.seconds < bootWaitUntil } } { };
-if(bootDone < 1, {
-	"ERROR: scsynth boot handshake timed out (30s)".postln;
-	bootOk = false;
-});
+bootThread.join;
 if(bootOk == true, {
 	if(useAlsaSynth, {
 		("scsynth connected (external jackd) — device: %, rate: %".format(
