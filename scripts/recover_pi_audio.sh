@@ -20,6 +20,7 @@ fetch scripts/lib/audio_stack.sh
 fetch scripts/restart_synth_services.sh
 fetch scripts/start_scsynth_alsa.sh
 fetch scripts/run_sclang_engine.sh
+fetch systemd/supercollider.service
 fetch synth/pi_bind_port.scd
 fetch synth/ambient_engine.scd
 chmod +x "$INSTALL_DIR/scripts/restart_synth_services.sh" \
