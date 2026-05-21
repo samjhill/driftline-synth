@@ -74,6 +74,14 @@ You should see `run_sclang_engine.sh` in `ExecStart`. If you still see bare `scl
 
 You should see `Pi Ambient Synth listening on OSC port 57120` in the journal.
 
+If the journal shows `SCLang Input: Operation not supported` then quit, the unit was likely
+using `sclang -l script.scd` (wrong). Use `scripts/run_sclang_engine.sh`, which runs
+`sclang /path/to/ambient_engine.scd` with stdin closed.
+
+## Synth crashes: `NameError: name 'Path' is not defined` in eink_display
+
+Pull latest `main` — `Path` must be imported at the top of `src/eink_display.py`.
+
 ## SuperCollider stuck on `activating`
 
 Usually `sclang` exits right after the script finishes (or the boot `fork` errors before the keep-alive loop), so systemd keeps restarting and `systemctl is-active` stays `activating` or flips `activating`/`failed`. The engine script must block the **main** thread (`while { true } { 1.wait }` after the boot `fork` in `synth/ambient_engine.scd`). `Restart=on-failure` in `systemd/supercollider.service` avoids a tight restart loop on clean exit; `Restart=always` would restart even on exit code 0 and can make `activating` worse.

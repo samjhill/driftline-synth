@@ -11,4 +11,5 @@ unset DISPLAY
 export SC_JACK_DEFAULT_INPUTS="${SC_JACK_DEFAULT_INPUTS:-}"
 export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
 
-exec /usr/bin/sclang -l "$SCD"
+# Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
+exec /usr/bin/sclang "$SCD" </dev/null
