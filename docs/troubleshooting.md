@@ -121,25 +121,25 @@ cd ~/pi-ambient-synth
 
 9. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
 
-### Fast engine iteration (avoid 50s systemd loops)
+### One-command verify (audio + engine)
 
-On the **Pi** after updating `ambient_engine.scd`:
+From your **Mac** (rsync this repo — no commit-pinned curl chain):
 
 ```bash
-~/pi-ambient-synth/scripts/engine_smoke_pi.sh --restart
-# log: /tmp/pi-ambient-engine-smoke.log — pass = ENGINE_TEST ok, no ERROR/Boolean
+./scripts/run_pi_verify.sh
+# PASS or FAIL + log tails; result: /var/lib/pi-ambient-synth/verify-last.txt
 ```
 
-From your **Mac** (rsync + smoke over SSH):
+On the **Pi** only (pulls `main` from GitHub):
 
 ```bash
-PI_HOST=pi@192.168.1.64 ./scripts/push_engine_to_pi.sh
+curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/pi_verify.sh | bash
 ```
 
-Only restart systemd after smoke passes:
+Includes up to 5 audio retries (4096→8192 buffers), then engine smoke. Restart services after PASS:
 
 ```bash
-sudo systemctl restart supercollider && sleep 20 && sudo systemctl restart pi-ambient-synth
+./scripts/run_pi_verify.sh --full
 ```
 
 Engine file must contain build marker `sc313-jackExternal` (external jackd + scsynth). On SC 3.13 Pi, never use C-style `if(x) { }`, `&&`/`||` in `if` tests, or `if(x and: { ... }, ...)` (and:/or: return non-Boolean values).
