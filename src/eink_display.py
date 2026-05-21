@@ -90,10 +90,33 @@ class EInkDisplay:
         self._driver_name = ""
         self._frame_count = 0
 
+    @staticmethod
+    def _prepare_gpio_env() -> None:
+        import os
+
+        home = os.environ.get("HOME") or "/home/pi"
+        os.environ["HOME"] = home
+        os.environ.setdefault("GPIOZERO_PIN_FACTORY", "lgpio")
+        try:
+            os.chdir(home)
+        except OSError:
+            pass
+        for directory in (home, os.getcwd()):
+            try:
+                for name in os.listdir(directory):
+                    if name.startswith(".lgd-"):
+                        try:
+                            os.remove(os.path.join(directory, name))
+                        except OSError:
+                            pass
+            except OSError:
+                pass
+
     def init(self) -> bool:
         if not self.enabled:
             logger.info("E-ink disabled in config")
             return False
+        self._prepare_gpio_env()
         if not _WAVESHARE_AVAILABLE or _epd_module is None:
             _load_epd_modules()
         if not _WAVESHARE_AVAILABLE or _epd_module is None:

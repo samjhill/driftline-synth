@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=6
+EINK_REFRESH_VERSION=7
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -108,19 +108,41 @@ fi
 
 stop_eink_clients() {
   echo "==> Stopping services that may hold e-ink GPIO..."
+  sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
   sudo systemctl stop pi-ambient-synth pi-ambient-synth-deploy.service 2>/dev/null || true
   sleep 2
 }
 
+start_eink_clients() {
+  sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
+  sudo systemctl start pi-ambient-synth 2>/dev/null || true
+}
+
+eink_python() {
+  if /usr/bin/python3 -c "import gpiozero, spidev" 2>/dev/null; then
+    echo /usr/bin/python3
+  elif [[ -x "$INSTALL_DIR/.venv/bin/python" ]]; then
+    echo "$INSTALL_DIR/.venv/bin/python"
+  else
+    command -v python3 || true
+  fi
+}
+
 release_eink_gpio() {
-  local py="$INSTALL_DIR/.venv/bin/python"
-  [[ -x "$py" ]] || py="$(command -v python3 || true)"
+  local py
+  py="$(eink_python)"
   [[ -n "$py" ]] || return 0
-  PYTHONPATH="$INSTALL_DIR/src" "$py" - <<'PY' 2>/dev/null || true
+  (
+    export HOME=/home/pi
+    export GPIOZERO_PIN_FACTORY=lgpio
+    cd /home/pi
+    rm -f /home/pi/.lgd-* ./.lgd-* 2>/dev/null || true
+    PYTHONPATH="$INSTALL_DIR/src" "$py" - <<'PY'
 from config_loader import load_config
 from eink_display import EInkDisplay
 EInkDisplay(load_config()).release()
 PY
+  ) 2>/dev/null || true
   sleep 1
 }
 
@@ -147,4 +169,4 @@ fi
 
 echo "--- /var/log/pi-ambient-synth-eink.log (last 12 lines) ---"
 tail -12 /var/log/pi-ambient-synth-eink.log 2>/dev/null || true
-sudo systemctl start pi-ambient-synth 2>/dev/null || true
+start_eink_clients

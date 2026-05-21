@@ -43,6 +43,11 @@ find_script() {
 }
 
 find_python() {
+  # Prefer system Python for gpiozero/lgpio (venv copy can break lgpio HOME paths).
+  if /usr/bin/python3 -c "import gpiozero, spidev" 2>/dev/null; then
+    echo /usr/bin/python3
+    return 0
+  fi
   if [[ -x "$INSTALL_DIR/.venv/bin/python" ]]; then
     echo "$INSTALL_DIR/.venv/bin/python"
     return 0
@@ -123,14 +128,23 @@ if bl="$(boot_log_dir)"; then
 fi
 
 run_display() {
-  if id -u pi &>/dev/null; then
-    sudo -u pi env PYTHONPATH="$src" HOME=/home/pi EINK_FORCE=1 \
-      "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
-      "$phase" "$title" "$subtitle" "$detail"
+  local -a eink_env=(
+    PYTHONPATH="$src"
+    HOME=/home/pi
+    GPIOZERO_PIN_FACTORY=lgpio
+    EINK_FORCE=1
+  )
+  if id -u pi &>/dev/null && [[ "$(id -un)" != "pi" ]]; then
+    sudo -u pi -H env "${eink_env[@]}" \
+      bash -lc "cd /home/pi && rm -f .lgd-* 2>/dev/null; exec \"$py\" \"$script\" ${cfg[*]} $step_arg $total_arg \"$phase\" \"$title\" \"$subtitle\" \"$detail\""
   else
-    env PYTHONPATH="$src" EINK_FORCE=1 \
-      "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
-      "$phase" "$title" "$subtitle" "$detail"
+    (
+      export "${eink_env[@]}"
+      cd /home/pi
+      rm -f .lgd-* 2>/dev/null || true
+      exec "$py" "$script" "${cfg[@]}" $step_arg $total_arg \
+        "$phase" "$title" "$subtitle" "$detail"
+    )
   fi
 }
 
