@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=3
+EINK_REFRESH_VERSION=4
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -39,12 +39,12 @@ pull_from_github_tarball() {
   sha="$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")"
   short="${sha:0:7}"
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
   curl -fsSL "https://github.com/${GITHUB_REPO}/archive/${sha}.tar.gz" -o "$tmp/src.tar.gz"
   mkdir -p "$tmp/extract"
   tar -xzf "$tmp/src.tar.gz" -C "$tmp/extract"
   extracted="$(find "$tmp/extract" -maxdepth 1 -type d ! -path "$tmp/extract" | head -1)"
   if [[ -z "$extracted" || ! -f "$extracted/install.sh" ]]; then
+    rm -rf "$tmp"
     echo "ERROR: GitHub archive did not extract as expected" >&2
     return 1
   fi
@@ -55,6 +55,7 @@ pull_from_github_tarball() {
     --exclude '__pycache__/' \
     --exclude '.pytest_cache/' \
     "$extracted/" "$INSTALL_DIR/"
+  rm -rf "$tmp"
   echo "$sha" >"$INSTALL_DIR/.deploy_sha"
   SUBTITLE="${3:-$short}"
   echo "==> Synced $short into $INSTALL_DIR"
