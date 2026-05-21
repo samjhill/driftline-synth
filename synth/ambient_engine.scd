@@ -3,7 +3,7 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest, bootOk, scPort;
+var port, useAlsaSynth, engineTest, bootOk, scPort, tries;
 
 bootOk = false;
 
@@ -74,19 +74,19 @@ Server.default = s;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
 	"Linking sclang to existing scsynth (port %)".format(scPort).postln;
-	// s.sync alone often fails on Pi; Server:boot attaches to scsynth already on UDP port.
 	s.boot;
-	24.do { |i|
-		s.sync;
-		if(s.serverRunning == true, {
-			bootOk = true;
-			^nil;
+	// Pi SC 3.13: ^nil inside .do does not stop the loop — use while + tries.
+	tries = 0;
+	while { tries < 24 } {
+		if(bootOk == true, {
+			tries = 24;
+		}, {
+			s.sync;
+			if(s.serverRunning == true, { bootOk = true });
+			tries = tries + 1;
+			0.25.wait;
 		});
-		0.25.wait;
 	};
-	if(bootOk != true, {
-		bootOk = (s.serverRunning == true);
-	});
 }, {
 	Server.killAll;
 	if(s.serverRunning == true, {

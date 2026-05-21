@@ -18,7 +18,7 @@ case "${1:-}" in
   services-only|services) HOTFIX_SERVICES_ONLY=1 ;;
 esac
 
-PINNED_SHA="ae3c641"
+PINNED_SHA="0b4c2ae"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
@@ -140,12 +140,14 @@ do_audio() {
 }
 
 do_smoke() {
+  do_fetch
   export PI_AMBIENT_ROOT="$INSTALL_DIR"
   export SC_HEADLESS_ALSA=1
   export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
   export JACK_NO_START_SERVER=1
   export JACK_NO_AUDIO_RESERVATION=1
-  export ENGINE_SMOKE_TIMEOUT="${ENGINE_SMOKE_TIMEOUT:-90}"
+  export ENGINE_SMOKE_TIMEOUT="${ENGINE_SMOKE_TIMEOUT:-180}"
+  export PI_SMOKE_NO_AUDIO=1
 
   ping "Refreshing audio stack before smoke"
   do_audio

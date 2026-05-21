@@ -8,7 +8,7 @@ set -euo pipefail
 ROOT="${PI_AMBIENT_ROOT:-/home/pi/pi-ambient-synth}"
 SCD="${ROOT}/synth/ambient_engine.scd"
 LOG="${ENGINE_SMOKE_LOG:-/tmp/pi-ambient-engine-smoke.log}"
-TIMEOUT="${ENGINE_SMOKE_TIMEOUT:-120}"
+TIMEOUT="${ENGINE_SMOKE_TIMEOUT:-180}"
 
 export HOME="${HOME:-/home/pi}"
 export QT_QPA_PLATFORM=offscreen
@@ -51,7 +51,9 @@ fi
 pkill -x sclang 2>/dev/null || true
 sleep 0.35
 
-if [[ "${1:-}" == "--reuse-audio" ]] && stack_up; then
+if [[ "${PI_SMOKE_NO_AUDIO:-}" == "1" ]]; then
+  echo "==> audio stack already up (PI_SMOKE_NO_AUDIO)"
+elif [[ "${1:-}" == "--reuse-audio" ]] && stack_up; then
   echo "==> reusing running jackd + scsynth (--reuse-audio)"
 else
   echo "==> starting fresh jackd + scsynth"
@@ -78,8 +80,9 @@ fi
 ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-jackLink}"
 if ! grep -q "$ENGINE_MARK" "$SCD"; then
   found="$(grep -o 'build sc313-[^"]*' "$SCD" | head -1 || true)"
-  echo "WARN: engine stale — want $ENGINE_MARK, file has: ${found:-<no sc313 marker>}" >&2
-  echo "  curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/e810b35/synth/ambient_engine.scd -o $SCD" >&2
+  echo "ERROR: engine stale — want $ENGINE_MARK, file has: ${found:-<no sc313 marker>}" >&2
+  echo "  run: curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash -s fetch-only" >&2
+  exit 1
 fi
 
 echo "==> engine smoke: $SCD (timeout ${TIMEOUT}s, log $LOG)"
