@@ -77,7 +77,18 @@ sudo systemctl restart supercollider pi-ambient-synth
 sudo journalctl -u supercollider -n 30 --no-pager
 ```
 
-3. **JACK** — `jackd2` must **not** be running (it grabs ALSA). `setup_pi_audio.sh` disables it.
+3. **JACK** — if the journal shows `JACK server starting` / `could not initialize audio`, scsynth is trying JACK instead of ALSA. Stop other users of the card, disable jackd2, and use explicit ALSA boot (`s.boot("plughw:0,0")` in current `ambient_engine.scd`):
+
+```bash
+sudo systemctl stop jackd2 pi-ambient-synth 2>/dev/null || true
+sudo systemctl disable jackd2 2>/dev/null || true
+bash ~/pi-ambient-synth/scripts/setup_pi_audio.sh
+sudo cp ~/pi-ambient-synth/systemd/supercollider.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart supercollider
+```
+
+`jackd2` must **not** be running (it grabs ALSA). `setup_pi_audio.sh` disables it.
 
 4. **Wrong ALSA device** — if HDMI is default, force the jack:
 

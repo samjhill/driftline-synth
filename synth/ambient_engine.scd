@@ -38,29 +38,27 @@ patchParams[\stereo_width] = 0.7;
 patchParams[\brightness] = 0.6;
 patchParams[\root_note] = 48;
 
-~configureServerAudio = {
-	var opt = Server.default.options;
+~configureServerAudio = { |srv|
+	var opt = srv.options;
 	var env = getenv("SC_AUDIO_DEVICE");
+	var dev = if(env.notNil && { env.size > 0 }, { env }, { "plughw:0,0" });
 	opt.numOutputBusChannels = 2;
 	opt.numInputBusChannels = 2;
 	opt.sampleRate = 44100;
-	if(env.notNil && { env.size > 0 }, {
-		"SC_AUDIO_DEVICE=%".format(env).postln;
-		opt.device = env;
-	}, {
-		opt.device = "plughw:0,0";
-		"SC_AUDIO_DEVICE unset — using plughw:0,0 (Pi headphone jack)".postln;
-	});
+	opt.device = dev;
+	"SC_AUDIO_DEVICE=% (ALSA — not JACK)".format(dev).postln;
+	dev;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc313-compat)".postln;
+"Pi Ambient Synth engine script loading (build alsa-boot)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
-~configureServerAudio.();
+~audioDevice = ~configureServerAudio.(s);
+if(s.serverRunning, { s.quit; 1.wait });
 if(s.serverRunning.not, {
-	"Starting scsynth...".postln;
-	s.boot;
+	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
+	s.boot(~audioDevice);
 	3.wait;
 });
 s.sync;
