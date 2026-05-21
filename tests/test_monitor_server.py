@@ -26,13 +26,21 @@ def test_collect_status_services(monkeypatch, tmp_path: Path):
     def fake_state(_unit: str) -> str:
         return {"supercollider.service": "failed"}.get(_unit, "active")
 
+    midi_stub = {
+        "label": "Not connected — no MIDI inputs",
+        "ok": False,
+        "inputs": [],
+        "device_present": False,
+    }
     with patch("monitor_server._service_state", side_effect=fake_state):
         with patch("monitor_server._service_detail", return_value={"ActiveState": "failed"}):
             with patch("monitor_server._journal_tail", return_value=([], None)):
                 with patch("monitor_server._systemctl_status_tail", return_value=["● failed"]):
                     with patch("monitor_server.network_snapshot", return_value={"primary_ip": "10.0.0.1"}):
-                        status = collect_status(config)
+                        with patch("monitor_server.midi_status_summary", return_value=midi_stub):
+                            status = collect_status(config)
 
     assert status["services"]["supercollider"] == "failed"
     assert "journal_logs" in status
     assert status["network"]["primary_ip"] == "10.0.0.1"
+    assert status["midi"]["label"] == midi_stub["label"]

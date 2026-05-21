@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 import mido
@@ -59,6 +61,18 @@ class MidiController:
         self.on_hold_change: Callable[[bool], None] | None = None
         self.on_recall_favorite: Callable[[], None] | None = None
         self.on_weather_change: Callable[[float], None] | None = None
+
+    @property
+    def port_name(self) -> str | None:
+        return self._port_name
+
+    @property
+    def is_open(self) -> bool:
+        return self._port is not None
+
+    @property
+    def is_listening(self) -> bool:
+        return self._running and self._port is not None
 
     @staticmethod
     def list_inputs() -> list[str]:
@@ -218,3 +232,99 @@ class MidiController:
         if self._port:
             self._port.close()
             self._port = None
+        self._port_name = None
+
+
+def midi_snapshot(config: dict[str, Any]) -> dict[str, Any]:
+    """Scan ALSA/MIDI inputs and resolve preferred keyboard port."""
+    midi_cfg = config.get("midi", {})
+    keywords: list[str] = midi_cfg.get(
+        "preferred_input_keywords", ["KeyStep", "Arturia"]
+    )
+    fallback = midi_cfg.get("fallback_to_first_available", True)
+    inputs = MidiController.list_inputs()
+    preferred: str | None = None
+    for keyword in keywords:
+        for name in inputs:
+            if keyword.lower() in name.lower():
+                preferred = name
+                break
+        if preferred:
+            break
+    selected = preferred
+    if not selected and inputs and fallback:
+        selected = inputs[0]
+    return {
+        "inputs": inputs,
+        "preferred_keywords": keywords,
+        "selected_port": selected,
+        "preferred_found": preferred is not None,
+        "device_present": bool(inputs),
+    }
+
+
+def load_midi_marker(marker_dir: Path | str) -> dict[str, Any] | None:
+    path = Path(marker_dir) / "midi-status.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def save_midi_status(
+    config: dict[str, Any],
+    *,
+    connected: bool,
+    port_name: str | None,
+    listening: bool,
+) -> Path | None:
+    """Persist synth MIDI open state for the LAN monitor (separate process)."""
+    marker_dir = Path(
+        config.get("app", {}).get("marker_dir", "/var/lib/pi-ambient-synth")
+    )
+    payload = {
+        "connected": connected,
+        "port_name": port_name,
+        "listening": listening,
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        marker_dir.mkdir(parents=True, exist_ok=True)
+        path = marker_dir / "midi-status.json"
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return path
+    except OSError as e:
+        logger.warning("Could not write %s: %s", marker_dir / "midi-status.json", e)
+        return None
+
+
+def midi_status_summary(config: dict[str, Any]) -> dict[str, Any]:
+    """Hardware scan plus optional synth marker for monitor UI."""
+    snap = midi_snapshot(config)
+    marker_dir = config.get("app", {}).get("marker_dir", "/var/lib/pi-ambient-synth")
+    synth = load_midi_marker(marker_dir)
+    label, ok = _midi_status_label(snap, synth)
+    return {**snap, "synth": synth, "label": label, "ok": ok}
+
+
+def _midi_status_label(
+    snap: dict[str, Any], synth: dict[str, Any] | None
+) -> tuple[str, bool | None]:
+    if synth and synth.get("listening"):
+        port = synth.get("port_name") or snap.get("selected_port") or "MIDI"
+        return f"Connected — {port}", True
+    if synth is not None and synth.get("connected") is False:
+        if snap.get("preferred_found") or snap.get("selected_port"):
+            port = snap.get("selected_port") or "?"
+            return f"Detected — {port} (synth not listening)", False
+        return "Not connected — synth has no MIDI input", False
+    if snap.get("preferred_found"):
+        port = snap.get("selected_port") or "?"
+        return f"Detected — {port}", None
+    if snap.get("device_present"):
+        port = (snap.get("inputs") or ["?"])[0]
+        return f"Input available — {port}", None
+    return "Not connected — no MIDI inputs", False

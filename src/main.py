@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 from config_loader import load_config
 from eink_display import EInkDisplay
 from logging_setup import setup_logging
-from midi_controller import MidiController
+from midi_controller import MidiController, save_midi_status
 from osc_client import OscClient
 from note_names import format_active_notes
 from patch_generator import PatchGenerator
@@ -81,8 +81,15 @@ class PiAmbientSynth:
         self._wire_midi()
         if not self.midi.open():
             logger.warning("MIDI unavailable — OSC/visual still active")
+            save_midi_status(self.config, connected=False, port_name=None, listening=False)
         else:
             self.midi.start()
+            save_midi_status(
+                self.config,
+                connected=True,
+                port_name=self.midi.port_name,
+                listening=True,
+            )
 
     def _wire_midi(self) -> None:
         self.midi.on_note_on = self._on_note_on
@@ -262,6 +269,7 @@ class PiAmbientSynth:
     def shutdown(self) -> None:
         self._running = False
         self.midi.stop()
+        save_midi_status(self.config, connected=False, port_name=None, listening=False)
         if self.config.get("eink", {}).get("clear_on_shutdown", False):
             self.eink.clear()
         else:

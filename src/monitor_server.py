@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from config_loader import load_config
 from logging_setup import setup_logging
+from midi_controller import midi_status_summary
 from network_info import network_snapshot
 from state_store import StateStore
 
@@ -178,11 +179,14 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
             journal_errors[key] = err
         status_snippets[key] = _systemctl_status_tail(unit, 8)
 
+    midi = midi_status_summary(config)
+
     return {
         "app": app.get("name", "Pi Ambient Synth"),
         "collected_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "uptime_seconds": int(time.time() - ps_boot_time()) if ps_boot_time() else None,
         "network": network,
+        "midi": midi,
         "services": services,
         "service_details": service_details,
         "patch": patch_data,
@@ -236,6 +240,10 @@ def _html_page(status: dict[str, Any]) -> str:
     patch_sum = status.get("patch_summary") or "No patch loaded"
     sha = status.get("deploy_sha") or "—"
     collected = status.get("collected_at") or ""
+    midi = status.get("midi") or {}
+    midi_label = midi.get("label") or "Unknown"
+    midi_ok = midi.get("ok")
+    midi_inputs = ", ".join(midi.get("inputs") or []) or "—"
 
     def row(label: str, value: str, ok: bool | None = None) -> str:
         td_class = "ok" if ok is True else ("bad" if ok is False else "")
@@ -259,6 +267,10 @@ def _html_page(status: dict[str, Any]) -> str:
         detail_rows += row(f"{name} detail", summary, ok=ok)
 
     alerts: list[str] = []
+    if midi_ok is False:
+        alerts.append(
+            f"<div class='alert'>MIDI keyboard: <strong>{_escape(midi_label)}</strong></div>"
+        )
     for name, state in svc.items():
         if state not in ("active", "inactive"):
             alerts.append(
@@ -338,6 +350,8 @@ def _html_page(status: dict[str, Any]) -> str:
   <table>
     {row("Hostname", host)}
     {row("SSH", f"ssh pi@{mdns}")}
+    {row("MIDI keyboard", midi_label, ok=midi_ok)}
+    {row("MIDI inputs", midi_inputs)}
     {row("Current patch", patch_sum)}
     {row("Deploy SHA", sha)}
     {net_row}
