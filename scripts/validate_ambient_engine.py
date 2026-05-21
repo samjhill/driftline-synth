@@ -78,14 +78,17 @@ def validate(path: Path) -> list[str]:
                     errors.append(
                         f"line {i}: var must be at top of ( ) block — not after other statements"
                     )
-            else:
-                if stripped not in ("(", ")"):
-                    initial_vars_done = True
+            elif stripped not in ("(", ")"):
+                initial_vars_done = True
         depth += stripped.count("{") - stripped.count("}")
 
     for i, line in enumerate(lines, 1):
         if re.search(r"\band\s+\{", line) and "and:" not in line:
             errors.append(f"line {i}: use 'and:' not 'and {{' for short-circuit AND")
+        if re.search(r"\.and\(\{", line):
+            errors.append(
+                f"line {i}: use 'expr and: {{ ... }}' not '{{ expr }}.and({{ ... }})' (Non Boolean in test)"
+            )
         if re.search(r"msg\[\d+\]\s*\?\s*msg\[\d+\]\s*:", line):
             errors.append(f"line {i}: JS ternary invalid in SC — use msg[n] ?? default")
         if re.search(r"\bTWhiteNoise\.", line):

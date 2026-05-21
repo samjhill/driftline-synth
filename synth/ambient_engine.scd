@@ -73,7 +73,7 @@ fork {
 		"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 		s.boot(~audioDevice);
 	});
-	while { { s.serverRunning.not }.and({ tries < 300 }).and({ timedOut.not }) } {
+	while { s.serverRunning.not and: { tries < 300 } and: { timedOut.not } } {
 		0.1.wait;
 		tries = tries + 1;
 	};
