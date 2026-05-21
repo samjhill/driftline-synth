@@ -1,0 +1,30 @@
+---
+description: Run ambient_engine.scd validator before committing synth engine changes
+globs: synth/**/*.scd,scripts/run_sclang_engine.sh,scripts/validate_ambient_engine.*
+alwaysApply: false
+---
+
+# SuperCollider engine validation
+
+Before finishing any work on `synth/ambient_engine.scd` or related engine scripts, **run the validator locally** (do not rely on Pi deploy or push to find syntax errors):
+
+```bash
+./scripts/validate_ambient_engine.sh
+pytest tests/test_ambient_engine_scd.py -q
+```
+
+On Linux (or CI), also run:
+
+```bash
+./scripts/validate_ambient_engine.sh --sclang
+```
+
+## SuperCollider syntax pitfalls (this repo)
+
+- Short-circuit AND: `companionOn and: { ... }` — not `and {`
+- Defaults: `msg[1] ?? 120` — not `msg[1] ? msg[1] : 120`
+- Close `if(s.serverRunning, { ... });` with `});` — not `};` alone before the main-loop / test exit
+
+## Deploy note
+
+Do not use stale `raw.githubusercontent.com/.../main/synth/ambient_engine.scd` on the Pi; use a commit SHA or `recover_pi_from_github.sh`.
