@@ -103,8 +103,8 @@ class PiAmbientSynth:
     def startup(self) -> None:
         vol = self.config.get("audio", {}).get("default_volume", 0.65)
         self.osc.set_volume(vol)
-        self.eink.init()
         if self.config.get("eink", {}).get("enabled", True):
+            self.eink.init()
             self.eink.show_status(
                 "synth",
                 "Loading synth",
