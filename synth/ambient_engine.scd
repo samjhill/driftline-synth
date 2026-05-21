@@ -61,7 +61,7 @@ s = Server.local;
 // waitForBoot can hang forever when scsynth is up but sclang never sees serverRunning (Pi JACK/ALSA).
 bootGate = Condition.new;
 fork {
-	var timedOut = false;
+	var timedOut = false, tries = 0;
 	fork {
 		50.wait;
 		timedOut = true;
@@ -73,7 +73,6 @@ fork {
 		"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 		s.boot(~audioDevice);
 	});
-	var tries = 0;
 	while { { s.serverRunning.not }.and({ tries < 300 }).and({ timedOut.not }) } {
 		0.1.wait;
 		tries = tries + 1;
