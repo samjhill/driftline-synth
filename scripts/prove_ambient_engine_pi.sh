@@ -28,7 +28,7 @@ echo "$j" | grep -qiE 'syntax error|command line parse failed' \
 echo "$j" | grep -qE 'Engine synths started|startup chime' \
   || { log "FAIL: engine not started"; exit 1; }
 
-pgrep -x jackd >/dev/null && log "WARN: jackd still running (expected native ALSA only)"
+pgrep -x jackd >/dev/null || log "WARN: jackd not running (ambient uses external jackd + scsynth)"
 
 [[ -x "$PY" ]] && "$PY" "$INSTALL_DIR/scripts/test_osc.py" \
   || { log "FAIL: test_osc.py"; exit 1; }
