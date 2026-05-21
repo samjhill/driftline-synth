@@ -3,12 +3,9 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest, blockSleep, bootDone, bootOk;
+var port, useAlsaSynth, engineTest, bootDone, bootOk, bootWaitUntil;
 
-// Pi SC 3.13: s.sync / Condition.hang fail on main thread — sync inside fork, poll with unix sleep.
-blockSleep = { |sec|
-	("sleep " ++ sec.asString).unixCmd;
-};
+// Pi SC 3.13: no unixCmd (Popen blocked), no s.sync/hang on main — sync in fork, spin until bootDone.
 bootDone = 0;
 bootOk = false;
 
@@ -65,7 +62,7 @@ patchParams[\root_note] = 48;
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackFork)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackJoin)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
@@ -87,7 +84,12 @@ fork {
 	});
 	bootDone = 1;
 };
-while { bootDone < 1 } { blockSleep.(0.05) };
+bootWaitUntil = SystemClock.seconds + 30;
+while { (bootDone < 1) and: { SystemClock.seconds < bootWaitUntil } } { };
+if(bootDone < 1, {
+	"ERROR: scsynth boot handshake timed out (30s)".postln;
+	bootOk = false;
+});
 if(bootOk == true, {
 	if(useAlsaSynth, {
 		("scsynth connected (external jackd) — device: %, rate: %".format(
@@ -485,7 +487,14 @@ OSCdef(\piTestBeep, { |msg|
 
 NetAddr.localAddr.port = port;
 "Pi Ambient Synth listening on OSC port %".format(port).postln;
-"mkdir -p /var/lib/pi-ambient-synth && date -Iseconds > /var/lib/pi-ambient-synth/sc-engine-ready".unixCmd;
+try {
+	PathName("/var/lib/pi-ambient-synth").mkdir;
+	File.use("/var/lib/pi-ambient-synth/sc-engine-ready", "w", { |f|
+		f.write(Date.getDate.asString);
+	});
+} { |err|
+	("WARN: sc-engine-ready marker: %".format(err)).postln;
+};
 
 if(engineTest, {
 	if(bootOk != true, {
@@ -499,6 +508,6 @@ if(engineTest, {
 	"Pi Ambient Synth ENGINE_TEST ok".postln;
 	0.exit;
 });
-// Keep sclang alive for systemd (main thread — no Routine .wait on Pi SC 3.13).
-loop { blockSleep.(60) };
+// Keep sclang alive for systemd (Thread:join blocks main without Routine yield).
+fork { loop { 1.wait } }.join;
 )
