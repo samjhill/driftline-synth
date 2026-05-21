@@ -42,7 +42,7 @@ patchParams[\root_note] = 48;
 	var opt = srv.options;
 	var env = getenv("SC_AUDIO_DEVICE");
 	// hw:0,0 — plughw:0,0 can make JACK report client name '0,0' and break sclang↔scsynth link.
-	var dev = if(env.notNil && { env.size > 0 }, { env }, { "hw:0,0" });
+	var dev = if(env.notNil and: { env.size > 0 }, { env }, { "hw:0,0" });
 	opt.numOutputBusChannels = 2;
 	opt.numInputBusChannels = 2;
 	// Pi scsynth+JACK often locks to 48000; match to avoid silent or wrong-rate output.
@@ -120,7 +120,7 @@ if(s.serverRunning == true, {
 	evolveRoutine = fork {
 		loop {
 			8.wait;
-			if(evolveEnabled.not, {
+			if(evolveEnabled == false, {
 				evolveRoutine = nil;
 				^this;
 			});

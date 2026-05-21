@@ -89,6 +89,10 @@ def validate(path: Path) -> list[str]:
             errors.append(
                 f"line {i}: use 'expr and: {{ ... }}' not '{{ expr }}.and({{ ... }})' (Non Boolean in test)"
             )
+        if re.search(r"if\([^)]*&&", line):
+            errors.append(
+                f"line {i}: use 'and:' not '&&' inside if() — causes MustBeBooleanError on Pi SC 3.13"
+            )
         if re.search(r"msg\[\d+\]\s*\?\s*msg\[\d+\]\s*:", line):
             errors.append(f"line {i}: JS ternary invalid in SC — use msg[n] ?? default")
         if re.search(r"\bTWhiteNoise\.", line):
