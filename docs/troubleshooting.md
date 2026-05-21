@@ -36,6 +36,14 @@ python scripts/list_midi_devices.py
 
 Confirm the KeyStep appears. If not, unplug/replug and check `dmesg` on the Pi.
 
+If the monitor shows **Midi Through** instead of **KeyStep** / **Arturia**, the keyboard is **not** on USB-MIDI (power-only cable, wrong port, or not plugged in). Fix USB, then:
+
+```bash
+sudo systemctl restart pi-ambient-synth
+```
+
+Play keys **above G3 (MIDI note 55+)** for melody; lower keys only move the drone root.
+
 ## Synth restarts: `MidiInAlsa::initialize: error creating ALSA sequencer client`
 
 The app should stay running without MIDI (latest code catches this). To fix ALSA MIDI:
@@ -209,6 +217,16 @@ sudo systemctl restart pi-ambient-synth-monitor
 ```
 
 After the Pi pulls `main`, the monitor table should list MIDI keyboard status again.
+
+### Deploy log: `Fetching .../archive/Network: 192.168...` / `archive did not extract`
+
+The deploy timer captured **network status log text** as the GitHub SHA (stdout pollution). Pull `main` (fix in `6998d6e+`) or run recovery:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/recover_pi_from_github.sh | bash
+```
+
+Then confirm deploy log shows `Fetching https://github.com/samjhill/driftline-synth/archive/<40-char-sha>.tar.gz` and **Deploy SHA** updates to a real commit (e.g. `6998d6e`).
 
 If **Deploy SHA** still shows `boot-sd` after GitHub pull, the marker file was never updated (SD bootstrap placeholder). Clear it and redeploy:
 
