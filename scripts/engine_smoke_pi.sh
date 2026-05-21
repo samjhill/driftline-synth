@@ -81,7 +81,7 @@ if [[ ! -f "$SCD" ]]; then
   exit 1
 fi
 
-ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-selectKr}"
+ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-oscPaths}"
 if ! grep -q "$ENGINE_MARK" "$SCD"; then
   found="$(grep -o 'build sc313-[^"]*' "$SCD" | head -1 || true)"
   echo "ERROR: engine stale — want $ENGINE_MARK, file has: ${found:-<no sc313 marker>}" >&2

@@ -50,6 +50,16 @@ scsynth_ready() {
   port_open
 }
 
+connect_jack_playback() {
+  command -v jack_lsp >/dev/null || return 0
+  command -v jack_connect >/dev/null || return 0
+  local out1 out2
+  out1="$(jack_lsp 2>/dev/null | grep -E 'SuperCollider:out_1$' | head -1 || true)"
+  out2="$(jack_lsp 2>/dev/null | grep -E 'SuperCollider:out_2$' | head -1 || true)"
+  [[ -n "$out1" ]] && jack_connect "$out1" system:playback_1 2>/dev/null || true
+  [[ -n "$out2" ]] && jack_connect "$out2" system:playback_2 2>/dev/null || true
+}
+
 jack_ready() {
   pgrep -x jackd >/dev/null || return 1
   ls /dev/shm/jack* 1>/dev/null 2>&1
@@ -146,6 +156,7 @@ start_scsynth_client() {
   } >>"$LOG" 2>&1 &
   pid=$!
   if wait_scsynth "$pid"; then
+    connect_jack_playback
     mkdir -p "$MARKER_DIR"
     {
       echo "SC_SYNTH_DRIVER=jack"

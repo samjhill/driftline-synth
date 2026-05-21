@@ -65,7 +65,7 @@ patchParams[\root_note] = 48;
 
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-selectKr)".postln;
+"Pi Ambient Synth engine script loading (build sc313-oscPaths)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 scPort = 57110;
 if(getenv("SC_SYNTH_PORT").notNil, {
@@ -378,11 +378,11 @@ if(bootOk == true, {
 
 OSCdef(\piNoteOn, { |msg|
 		~playNote.(msg[1].asInteger, msg[2] ? 100);
-	}, \pi_synth_note_on);
+	}, "/pi_synth/note_on");
 
 	OSCdef(\piNoteOff, { |msg|
 		~stopNote.(msg[1].asInteger);
-	}, \pi_synth_note_off);
+	}, "/pi_synth/note_off");
 
 OSCdef(\piSet, { |msg|
 		var key = msg[1].asString.asSymbol;
@@ -402,15 +402,15 @@ OSCdef(\piSet, { |msg|
 				});
 			});
 		});
-	}, \pi_synth_set);
+	}, "/pi_synth/set");
 
-OSCdef(\piMorphTime, { |msg|
+	OSCdef(\piMorphTime, { |msg|
 		morphTime = msg[1] ? 6.0;
-	}, \pi_synth_morph_time);
+	}, "/pi_synth/morph_time");
 
 	OSCdef(\piPatchLoaded, { |msg|
 		~applyPatch.(morphTime);
-	}, \pi_synth_patch_loaded);
+	}, "/pi_synth/patch_loaded");
 
 	OSCdef(\piReseedTransition, { |msg|
 		var dur = msg[1] ? 2.0;
@@ -421,11 +421,11 @@ OSCdef(\piMorphTime, { |msg|
 				textureSynth.set(\rev, patchParams[\reverb_mix] ? 0.45);
 			};
 		});
-	}, \pi_synth_reseed_transition);
+	}, "/pi_synth/reseed_transition");
 
 	OSCdef(\piReseed, { |msg|
 		"Reseed: %".format(msg[1]).postln;
-	}, \pi_synth_reseed);
+	}, "/pi_synth/reseed");
 
 	OSCdef(\piTextureRoot, { |msg|
 		var n = msg[1].asInteger;
@@ -433,7 +433,7 @@ OSCdef(\piMorphTime, { |msg|
 			textureRoot = n;
 			if(textureSynth.notNil, { textureSynth.set(\root, n) });
 		});
-	}, \pi_synth_texture_root);
+	}, "/pi_synth/texture_root");
 
 	OSCdef(\piArpActive, { |msg|
 		arpActive = msg[1] > 0;
@@ -441,18 +441,18 @@ OSCdef(\piMorphTime, { |msg|
 			textureSynth.set(\shimmer, if(arpActive, 0.35, 0.0));
 		});
 		~setDuck.();
-	}, \pi_synth_arp_active);
+	}, "/pi_synth/arp_active");
 
 	OSCdef(\piHold, { |msg|
 		holdLatch = msg[1] > 0;
-	}, \pi_synth_hold);
+	}, "/pi_synth/hold");
 
 	OSCdef(\piEvolve, { |msg|
 		evolveEnabled = msg[1] > 0;
 		if(evolveEnabled, { ~startEvolve.() }, {
 			if(evolveRoutine.notNil, { evolveRoutine.stop; evolveRoutine = nil });
 		});
-	}, \pi_synth_evolve);
+	}, "/pi_synth/evolve");
 
 	OSCdef(\piWeather, { |msg|
 		var w = msg[1].clip(0, 1);
@@ -460,7 +460,7 @@ OSCdef(\piMorphTime, { |msg|
 		~morphParam.(\filter_cutoff, 900 + (2800 * (1 - w)), 2);
 		~morphParam.(\reverb_size, 0.55 + (0.4 * w), 3);
 		~morphParam.(\noise_level, 0.02 + (0.14 * (1 - w)), 2);
-	}, \pi_synth_weather);
+	}, "/pi_synth/weather");
 
 	OSCdef(\piCompanion, { |msg|
 		companionOn = msg[1] > 0;
@@ -477,11 +477,11 @@ OSCdef(\piMorphTime, { |msg|
 				companionSynth = nil;
 			});
 		});
-	}, \pi_synth_companion);
+	}, "/pi_synth/companion");
 
-	OSCdef(\piAllOff, { ~allOff.() }, \pi_synth_all_notes_off);
-	OSCdef(\piPanic, { ~panic.() }, \pi_synth_panic);
-	OSCdef(\piPanicBloom, { ~panicBloom.() }, \pi_synth_panic_bloom);
+	OSCdef(\piAllOff, { ~allOff.() }, "/pi_synth/all_notes_off");
+	OSCdef(\piPanic, { ~panic.() }, "/pi_synth/panic");
+	OSCdef(\piPanicBloom, { ~panicBloom.() }, "/pi_synth/panic_bloom");
 
 	OSCdef(\piClockBpm, { |msg|
 		var bpm = msg[1] ?? 120;
@@ -491,7 +491,7 @@ OSCdef(\piMorphTime, { |msg|
 			// quantize delay feel to clock
 		});
 		~morphParam.(\delay_time, (beat * [0.5, 0.75, 1.0, 1.5].choose), 0.5);
-	}, \pi_synth_clock_bpm);
+	}, "/pi_synth/clock_bpm");
 
 	OSCdef(\piTapeGrit, { |msg|
 		var amt = msg[1] ?? 0.2;
@@ -501,7 +501,7 @@ OSCdef(\piMorphTime, { |msg|
 			sec.wait;
 			~morphParam.(\noise_level, patchParams[\noise_level] ? 0.05, 3);
 		};
-	}, \pi_synth_tape_grit);
+	}, "/pi_synth/tape_grit");
 
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
@@ -516,7 +516,7 @@ OSCdef(\piTestBeep, { |msg|
 		]);
 		"pi_test_beep % Hz".format(freq).postln;
 	});
-}, \pi_synth_test_beep);
+}, "/pi_synth/test_beep");
 
 "Pi Ambient Synth listening on OSC port %".format(port).postln;
 try {
@@ -534,6 +534,8 @@ if(engineTest, {
 		"Pi Ambient Synth ENGINE_TEST failed: scsynth not connected".postln;
 		0.exit;
 	});
+	NetAddr("127.0.0.1", port).sendMsg("/pi_synth/test_beep", 440, 0.7);
+	0.5.wait;
 	"Pi Ambient Synth ENGINE_TEST ok".postln;
 	0.exit;
 });
