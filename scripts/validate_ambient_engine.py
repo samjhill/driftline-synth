@@ -75,6 +75,10 @@ def validate(path: Path) -> list[str]:
             errors.append(
                 f"line {i}: TWhiteNoise missing on Pi SC 3.13 — use LFNoise0.kr(...).range(...)"
             )
+        if re.search(r"\.booted\b", line):
+            errors.append(
+                f"line {i}: Server.booted is not in SC 3.13 — use s.serverRunning"
+            )
 
     # Block before infinite loop must close if(s.serverRunning) with });
     for idx, line in enumerate(lines):

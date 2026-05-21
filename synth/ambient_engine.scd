@@ -52,18 +52,18 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build no-wait-boot)".postln;
+"Pi Ambient Synth engine script loading (build sc313-serverRunning)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 // Do not use N.wait here — sclang .scd on main thread is not a Routine (yield error on Pi).
-if(s.booted, { s.quit; s.sync });
-if(s.booted.not, {
+if(s.serverRunning, { s.quit; s.sync });
+if(s.serverRunning.not, {
 	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 	s.boot(~audioDevice);
 });
 s.sync;
-if(s.booted.not, {
+if(s.serverRunning.not, {
 	"ERROR: scsynth failed to start — check: which scsynth, aplay -l, SC_AUDIO_DEVICE".postln;
 }, {
 	("scsynth running — device: %, out ch: %".format(
@@ -293,7 +293,7 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		};
 };
 
-if(s.booted, {
+if(s.serverRunning, {
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 
@@ -303,7 +303,7 @@ if(s.booted, {
 	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5, \amp, masterVol * 1.35]);
 	"Engine synths started (texture drone + FX chain)".postln;
 }, {
-	"WARN: scsynth not booted — OSC registered but notes will not sound".postln;
+	"WARN: scsynth not running — OSC registered but notes will not sound".postln;
 });
 
 OSCdef(\piNoteOn, { |msg|
@@ -430,7 +430,7 @@ OSCdef(\piMorphTime, { |msg|
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
 	var amp = msg[2] ?? 0.55;
-	if(s.booted.not, {
+	if(s.serverRunning.not, {
 		"pi_test_beep: scsynth not running".postln;
 	}, {
 		Synth(\piAmbientVoice, [
