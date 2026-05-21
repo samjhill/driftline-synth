@@ -5,7 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from monitor_server import _tail_file, collect_status
+from monitor_server import _read_deploy_sha, _tail_file, collect_status
+
+
+def test_read_deploy_sha_prefers_git_over_placeholder(tmp_path: Path, monkeypatch):
+    install = tmp_path / "pi-ambient-synth"
+    install.mkdir()
+    marker = tmp_path / "var-lib"
+    marker.mkdir()
+    (install / ".deploy_sha").write_text("boot-sd\n", encoding="utf-8")
+    (marker / "last_deploy_sha").write_text("281a96cdef0123456789abcdef0123456789ab\n", encoding="utf-8")
+    monkeypatch.setattr("monitor_server.DEPLOY_SHA_FILE", install / ".deploy_sha")
+    monkeypatch.setattr("monitor_server.MARKER_DIR", marker)
+    sha, source = _read_deploy_sha()
+    assert sha == "281a96cdef0"
+    assert source == "marker"
 
 
 def test_tail_file(tmp_path: Path):

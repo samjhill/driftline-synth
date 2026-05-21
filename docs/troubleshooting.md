@@ -121,6 +121,15 @@ sudo systemctl restart pi-ambient-synth-monitor
 
 After the Pi pulls `main`, the monitor table should list MIDI keyboard status again.
 
+If **Deploy SHA** still shows `boot-sd` after GitHub pull, the marker file was never updated (SD bootstrap placeholder). Clear it and redeploy:
+
+```bash
+rm -f ~/pi-ambient-synth/.deploy_sha /var/lib/pi-ambient-synth/last_deploy_sha
+bash ~/pi-ambient-synth/scripts/enable_github_auto_pull.sh
+```
+
+The page should then show a 7–12 character Git commit id (e.g. `281a96c`).
+
 ## SuperCollider stuck on `activating`
 
 Usually `sclang` exits right after the script finishes (or the boot `fork` errors before the keep-alive loop), so systemd keeps restarting and `systemctl is-active` stays `activating` or flips `activating`/`failed`. The engine script must block the **main** thread (`while { true } { 1.wait }` after the boot `fork` in `synth/ambient_engine.scd`). `Restart=on-failure` in `systemd/supercollider.service` avoids a tight restart loop on clean exit; `Restart=always` would restart even on exit code 0 and can make `activating` worse.

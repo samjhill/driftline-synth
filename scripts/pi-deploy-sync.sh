@@ -126,12 +126,20 @@ installed_sha() {
   [[ -f "$INSTALL_DIR/.deploy_sha" ]] && cat "$INSTALL_DIR/.deploy_sha" || echo ""
 }
 
+is_placeholder_sha() {
+  case "$1" in
+    "" | boot | boot-sd | latest) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 write_installed_sha() {
   local sha="$1"
   mkdir -p "$MARKER_DIR" "$INSTALL_DIR"
   echo "$sha" > "$INSTALL_DIR/.deploy_sha"
   echo "$sha" > "$MARKER_DIR/last_deploy_sha"
   date -Iseconds > "$MARKER_DIR/last_deploy_at"
+  chown pi:pi "$INSTALL_DIR/.deploy_sha" "$MARKER_DIR/last_deploy_sha" "$MARKER_DIR/last_deploy_at" 2>/dev/null || true
 }
 
 ensure_pi_user() {
@@ -350,6 +358,12 @@ do_deploy() {
   short_sha="${target_sha:0:7}"
 
   log "Mode=$MODE source=${DEPLOY_SOURCE:-github} auto_pull=${AUTO_PULL:-0} remote=$short_sha installed=${current_sha:0:7}"
+
+  if is_placeholder_sha "$current_sha" && ! is_placeholder_sha "$target_sha"; then
+    write_installed_sha "$target_sha"
+    current_sha="$target_sha"
+    log "Healed deploy SHA marker ($short_sha)"
+  fi
 
   if [[ "$target_sha" == "$current_sha" ]]; then
     log "Already up to date ($short_sha)"

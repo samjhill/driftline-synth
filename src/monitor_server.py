@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 DEPLOY_LOG = Path("/var/log/pi-ambient-synth-deploy.log")
 EINK_LOG = Path("/var/log/pi-ambient-synth-eink.log")
 DEPLOY_SHA_FILE = Path("/home/pi/pi-ambient-synth/.deploy_sha")
+DEPLOY_SHA_PLACEHOLDERS = frozenset({"", "boot", "boot-sd", "latest"})
 NETWORK_FILE = Path("/var/lib/pi-ambient-synth/network.json")
 MARKER_DIR = Path("/var/lib/pi-ambient-synth")
 
@@ -124,6 +125,30 @@ def _tail_file(path: Path, lines: int = 40) -> list[str]:
         return []
 
 
+def _read_deploy_sha() -> tuple[str, str | None]:
+    """Return (short_sha_for_display, deploy_source_hint)."""
+    candidates: list[tuple[str, Path]] = [
+        ("install", DEPLOY_SHA_FILE),
+        ("marker", MARKER_DIR / "last_deploy_sha"),
+    ]
+    placeholder = ""
+    for source, path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        if raw.lower() in DEPLOY_SHA_PLACEHOLDERS:
+            if not placeholder:
+                placeholder = raw[:12]
+            continue
+        return raw[:12], source
+    if placeholder:
+        return placeholder, "sd-bootstrap"
+    return "", None
+
+
 def _read_marker_file(name: str) -> str | None:
     path = MARKER_DIR / name
     if not path.is_file():
@@ -157,9 +182,7 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
         except (json.JSONDecodeError, OSError):
             pass
 
-    deploy_sha = ""
-    if DEPLOY_SHA_FILE.is_file():
-        deploy_sha = DEPLOY_SHA_FILE.read_text(encoding="utf-8").strip()[:12]
+    deploy_sha, deploy_sha_source = _read_deploy_sha()
 
     services: dict[str, str] = {}
     service_details: dict[str, dict[str, str]] = {}
@@ -201,6 +224,7 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
         "patch": patch_data,
         "patch_summary": patch.summary() if patch else None,
         "deploy_sha": deploy_sha,
+        "deploy_sha_source": deploy_sha_source,
         "deploy_log_tail": _tail_file(DEPLOY_LOG, log_tail_lines),
         "eink_log_tail": _tail_file(EINK_LOG, log_tail_lines),
         "network_address": _read_marker_file("network-address.txt"),
@@ -248,6 +272,9 @@ def _html_page(status: dict[str, Any]) -> str:
     details = status.get("service_details") or {}
     patch_sum = status.get("patch_summary") or "No patch loaded"
     sha = status.get("deploy_sha") or "—"
+    sha_source = status.get("deploy_sha_source")
+    if sha_source == "sd-bootstrap" and sha:
+        sha = f"{sha} (SD — waiting for GitHub deploy)"
     collected = status.get("collected_at") or ""
     midi = status.get("midi") or {}
     midi_label = midi.get("label") or "Unknown"

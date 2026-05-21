@@ -18,6 +18,16 @@ ENABLE_SERVICES=1
 EOF
 
 echo "Wrote /etc/pi-ambient-synth/deploy.conf (GitHub ${REPO}@${BRANCH})"
+
+INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
+MARKER_DIR="/var/lib/pi-ambient-synth"
+for f in "$INSTALL_DIR/.deploy_sha" "$MARKER_DIR/last_deploy_sha"; do
+  if [[ -f "$f" ]] && grep -qxE 'boot-sd|boot|latest' "$f" 2>/dev/null; then
+    rm -f "$f"
+    echo "Cleared placeholder deploy marker: $f"
+  fi
+done
+
 if systemctl is-enabled pi-ambient-synth-deploy.timer &>/dev/null; then
   sudo systemctl start pi-ambient-synth-deploy.service
   echo "Triggered deploy now; monitor should update within ~1–2 min."
