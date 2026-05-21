@@ -3,7 +3,7 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest, bootOk;
+var port, useAlsaSynth, engineTest, bootOk, scPort;
 
 bootOk = false;
 
@@ -63,19 +63,26 @@ patchParams[\root_note] = 48;
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackPiUGens)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackLink)".postln;
 "Booting Pi Ambient Synth engine...".postln;
-s = Server.local;
+scPort = 57110;
+if(getenv("SC_SYNTH_PORT").notNil, {
+	if(getenv("SC_SYNTH_PORT").size > 0, { scPort = getenv("SC_SYNTH_PORT").asInteger });
+});
+s = Server(\piAmbient, NetAddr("127.0.0.1", scPort));
+Server.default = s;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
-	if(s.options.respondsTo(\booting), { s.options.booting = false });
-	12.do { |i|
+	"Linking sclang to existing scsynth (port %)".format(scPort).postln;
+	// s.sync alone often fails on Pi; Server:boot attaches to scsynth already on UDP port.
+	s.boot;
+	24.do { |i|
 		s.sync;
 		if(s.serverRunning == true, {
 			bootOk = true;
 			^nil;
 		});
-		0.5.wait;
+		0.25.wait;
 	};
 	if(bootOk != true, {
 		bootOk = (s.serverRunning == true);

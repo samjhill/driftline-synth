@@ -18,7 +18,7 @@ case "${1:-}" in
   services-only|services) HOTFIX_SERVICES_ONLY=1 ;;
 esac
 
-PINNED_SHA="a875109"
+PINNED_SHA="547fcc4"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
@@ -101,8 +101,8 @@ do_fetch() {
     "$INSTALL_DIR/scripts/engine_smoke_pi.sh" \
     "$INSTALL_DIR/scripts/diagnose_scsynth_audio.sh"
 
-  if ! grep -q 'sc313-jackPiUGens' "$INSTALL_DIR/synth/ambient_engine.scd"; then
-    log "ERROR: ambient_engine.scd missing sc313-jackPiUGens marker"
+  if ! grep -q 'sc313-jackLink' "$INSTALL_DIR/synth/ambient_engine.scd"; then
+    log "ERROR: ambient_engine.scd missing sc313-jackLink marker"
     exit 1
   fi
 }
@@ -147,15 +147,15 @@ do_smoke() {
   export JACK_NO_AUDIO_RESERVATION=1
   export ENGINE_SMOKE_TIMEOUT="${ENGINE_SMOKE_TIMEOUT:-90}"
 
-  if ! stack_looks_up; then
-    ping "Stack not up — starting audio first"
-    do_audio
-  fi
+  ping "Refreshing audio stack before smoke"
+  do_audio
 
   ping "Engine smoke (~${ENGINE_SMOKE_TIMEOUT}s, log /tmp/pi-ambient-engine-smoke.log) ..."
   rm -f /tmp/pi-ambient-engine-smoke.log 2>/dev/null || true
+  pkill -x sclang 2>/dev/null || true
+  sleep 0.35
   set +e
-  "$INSTALL_DIR/scripts/engine_smoke_pi.sh" --reuse-audio &
+  "$INSTALL_DIR/scripts/engine_smoke_pi.sh" &
   local smoke_pid=$!
   set -e
   local n=0
