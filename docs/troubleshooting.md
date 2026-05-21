@@ -69,7 +69,7 @@ speaker-test -D plughw:0,0 -r 44100 -t pink -c 2 -l 1
 
 If `speaker-test` is still silent, fix Pi routing/volume (`raspi-config` → Audio → Headphones, or plug headphones in before boot).
 
-2. **SuperCollider** — must be `active` and log `scsynth running` / `listening on OSC port 57120`:
+2. **SuperCollider** — `systemctl is-active` must be **`active`** and **`pgrep scsynth`** must show a process. The journal must include `Booting Pi Ambient Synth engine...`, `scsynth running`, and `listening on OSC port 57120`. If you only see `Welcome to SuperCollider` with no `scsynth`, the audio server never started — update `ambient_engine.scd` and restart.
 
 ```bash
 bash ~/pi-ambient-synth/scripts/diagnose_audio.sh

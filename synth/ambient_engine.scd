@@ -195,13 +195,19 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 	});
 };
 
-fork {
-	var port = 57120;
-	"Booting Pi Ambient Synth engine...".postln;
-	s = Server.local;
-	~configureServerAudio.();
-	if(s.serverRunning.not, { s.boot; 0.5.wait });
-	s.sync;
+var port = 57120;
+"Booting Pi Ambient Synth engine...".postln;
+s = Server.local;
+~configureServerAudio.();
+if(s.serverRunning.not, {
+	"Starting scsynth...".postln;
+	s.boot;
+	3.wait;
+});
+s.sync;
+if(s.serverRunning.not, {
+	"ERROR: scsynth failed to start — check journal, aplay -l, SC_AUDIO_DEVICE".postln;
+}, {
 	("scsynth running — device: %, out ch: %".format(
 		s.options.device, s.options.numOutputBusChannels
 	)).postln;
@@ -409,6 +415,6 @@ fork {
 	"Pi Ambient Synth listening on OSC port %".format(port).postln;
 };
 
-// Block the main sclang thread so systemd Type=simple stays active (fork alone is not enough).
+// Block the main sclang thread so systemd Type=simple stays active.
 while { true } { 1.wait };
 )
