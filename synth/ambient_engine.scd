@@ -54,7 +54,7 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc-nilcoalesce)".postln;
+"Pi Ambient Synth engine script loading (build sc313-compat)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~configureServerAudio.();
@@ -195,7 +195,8 @@ SynthDef(\piCompanion, {
 	|root=48, gate=1, density=0.35|
 	var scale, deg, freq, sig, env, interval;
 	scale = [0, 2, 3, 5, 7, 9, 10];
-	interval = TWhiteNoise.kr(0.08).range(3.5, 14.0);
+	// LFNoise0: SC 3.13 on Pi has no TWhiteNoise (added in later SC)
+	interval = LFNoise0.kr(0.08).range(3.5, 14.0);
 	deg = Latch.kr(IRand.kr(0, scale.size - 1), Dust.kr(interval));
 	freq = (root + scale[deg]).midicps;
 	sig = SinOsc.ar(freq) * 0.06;
