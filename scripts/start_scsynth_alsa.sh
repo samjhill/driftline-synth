@@ -13,6 +13,8 @@ LOG="${SCSYNTH_START_LOG:-/tmp/scsynth-alsa-start.log}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 DRIVER_FILE="$MARKER_DIR/scsynth_audio.conf"
 ALSA_BUF="${SC_ALSA_BUFFER:-4096}"
+ALSA_IN="${SC_ALSA_INPUTS:-0}"
+ALSA_OUT="${SC_ALSA_OUTPUTS:-2}"
 USE_NATIVE_ALSA="${SC_USE_NATIVE_ALSA:-0}"
 JACK_PERIOD="${SC_JACK_PERIOD:-4096}"
 JACK_NPERIODS="${SC_JACK_NPERIODS:-3}"
@@ -163,8 +165,8 @@ start_scsynth_native_alsa() {
   sleep 0.5
   {
     echo "=== $(date -Iseconds) scsynth native ALSA dev=$dev port=$PORT buf=$ALSA_BUF ==="
-    echo "cmd: scsynth -u $PORT -a alsa -H $dev -i 2 -o 2 -R $RATE -l 1"
-    scsynth -u "$PORT" -a alsa -H "$dev" -i 2 -o 2 -R "$RATE" -l 1
+    echo "cmd: scsynth -u $PORT -a alsa -H $dev -i $ALSA_IN -o $ALSA_OUT -R $RATE -l 1"
+    scsynth -u "$PORT" -a alsa -H "$dev" -i "$ALSA_IN" -o "$ALSA_OUT" -R "$RATE" -l 1
   } >>"$LOG" 2>&1 &
   pid=$!
   if wait_scsynth "$pid"; then

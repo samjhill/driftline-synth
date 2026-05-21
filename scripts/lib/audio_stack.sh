@@ -43,6 +43,8 @@ Environment=SC_HEADLESS_ALSA=1
 Environment=SC_USE_NATIVE_ALSA=1
 Environment=SC_AUDIO_DEVICE=hw:0,0
 Environment=SC_ALSA_BUFFER=4096
+Environment=SC_ALSA_INPUTS=0
+Environment=SC_ALSA_OUTPUTS=2
 Environment=SC_JACK_PERIOD=4096
 Environment=SC_JACK_NPERIODS=3
 Environment=SC_JACK_DEFAULT_OUTPUTS=system:playback_1,system:playback_2
