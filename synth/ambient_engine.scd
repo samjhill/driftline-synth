@@ -3,7 +3,7 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, bootGate;
+var port;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -53,40 +53,25 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc313-bootGate)".postln;
+"Pi Ambient Synth engine script loading (build sc313-syncBoot)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 Server.killAll;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-// waitForBoot can hang forever when scsynth is up but sclang never sees serverRunning (Pi JACK/ALSA).
-bootGate = Condition.new;
-fork {
-	var timedOut = false, tries = 0;
-	fork {
-		50.wait;
-		timedOut = true;
-		"WARN: boot gate timeout (50s) — continuing".postln;
-		bootGate.signal;
-	};
-	if(s.serverRunning, { s.quit; 2.wait });
-	if(s.serverRunning.not, {
-		"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
-		s.boot(~audioDevice);
-	});
-	while { s.serverRunning.not and: { tries < 300 } and: { timedOut.not } } {
-		0.1.wait;
-		tries = tries + 1;
-	};
-	if(s.serverRunning, {
-		("scsynth running — device: %, rate: %, out ch: %".format(
-			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
-		)).postln;
-	}, {
-		"ERROR: sclang not connected to scsynth — check: pgrep scsynth, SC_AUDIO_DEVICE=hw:0,0".postln;
-	});
-	bootGate.signal;
-};
-bootGate.wait;
+if(s.serverRunning == true, {
+	s.quit;
+	s.sync;
+});
+"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
+s.boot(~audioDevice);
+s.sync;
+if(s.serverRunning == true, {
+	("scsynth running — device: %, rate: %, out ch: %".format(
+		s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
+	)).postln;
+}, {
+	"ERROR: sclang not connected to scsynth after sync — pgrep scsynth; SC_AUDIO_DEVICE".postln;
+});
 
 ~setParam = { |key, val|
 	patchParams[key.asSymbol] = val;
@@ -310,7 +295,7 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		};
 };
 
-if(s.serverRunning, {
+if(s.serverRunning == true, {
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 
@@ -447,7 +432,7 @@ OSCdef(\piMorphTime, { |msg|
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
 	var amp = msg[2] ?? 0.55;
-	if(s.serverRunning.not, {
+	if(s.serverRunning != true, {
 		"pi_test_beep: scsynth not running".postln;
 	}, {
 		Synth(\piAmbientVoice, [
