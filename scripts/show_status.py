@@ -30,10 +30,7 @@ sys.path.insert(0, str(_src_dir()))
 from config_loader import load_config
 from eink_display import EInkDisplay
 from pisugar_battery import read_battery_snapshot
-from patch_generator import PatchGenerator
-from state_store import StateStore
 from status_display import StatusDisplay
-from visual_generator import VisualGenerator
 
 
 def show_status(
@@ -100,6 +97,10 @@ def show_status(
 
 
 def restore_patch() -> int:
+    from patch_generator import PatchGenerator
+    from state_store import StateStore
+    from visual_generator import VisualGenerator
+
     config = load_config()
     if not config.get("eink", {}).get("enabled", True):
         return 0

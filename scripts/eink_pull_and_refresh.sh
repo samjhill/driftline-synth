@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=7
+EINK_REFRESH_VERSION=8
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
