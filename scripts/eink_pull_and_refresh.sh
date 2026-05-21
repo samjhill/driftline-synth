@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=5
+EINK_REFRESH_VERSION=6
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -106,8 +106,45 @@ if [[ ! -x "$INSTALL_DIR/scripts/boot_display.sh" ]]; then
   exit 1
 fi
 
-sudo systemctl stop pi-ambient-synth 2>/dev/null || true
-EINK_FORCE=1 "$INSTALL_DIR/scripts/boot_display.sh" "$PHASE" "$TITLE" "$SUBTITLE" "$DETAIL"
+stop_eink_clients() {
+  echo "==> Stopping services that may hold e-ink GPIO..."
+  sudo systemctl stop pi-ambient-synth pi-ambient-synth-deploy.service 2>/dev/null || true
+  sleep 2
+}
+
+release_eink_gpio() {
+  local py="$INSTALL_DIR/.venv/bin/python"
+  [[ -x "$py" ]] || py="$(command -v python3 || true)"
+  [[ -n "$py" ]] || return 0
+  PYTHONPATH="$INSTALL_DIR/src" "$py" - <<'PY' 2>/dev/null || true
+from config_loader import load_config
+from eink_display import EInkDisplay
+EInkDisplay(load_config()).release()
+PY
+  sleep 1
+}
+
+run_boot_display() {
+  local attempt rc=1
+  stop_eink_clients
+  for attempt in 1 2 3; do
+    if EINK_FORCE=1 "$INSTALL_DIR/scripts/boot_display.sh" \
+      "$PHASE" "$TITLE" "$SUBTITLE" "$DETAIL"; then
+      return 0
+    fi
+    rc=1
+    if [[ "$attempt" -lt 3 ]]; then
+      echo "==> E-ink attempt $attempt failed; releasing GPIO and retrying..."
+      release_eink_gpio
+    fi
+  done
+  return "$rc"
+}
+
+if ! run_boot_display; then
+  echo "WARN: e-ink update failed after 3 attempts — see log below" >&2
+fi
+
 echo "--- /var/log/pi-ambient-synth-eink.log (last 12 lines) ---"
 tail -12 /var/log/pi-ambient-synth-eink.log 2>/dev/null || true
 sudo systemctl start pi-ambient-synth 2>/dev/null || true

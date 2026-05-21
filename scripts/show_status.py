@@ -66,6 +66,7 @@ def show_status(
     )
     display = EInkDisplay(config)
     if not display.init():
+        display.release()
         print("E-ink init failed — check SPI, gpiozero, vendor/waveshare", file=sys.stderr)
         return 1
     battery = None

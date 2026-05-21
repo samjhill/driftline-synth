@@ -112,6 +112,8 @@ class EInkDisplay:
         except Exception as e:
             logger.warning("E-ink init failed: %s", e)
             self._available = False
+            self._release_gpio_only()
+            self._epd = None
             return False
 
     @property
@@ -198,20 +200,22 @@ class EInkDisplay:
             self._epd.Clear(0xFF)
         logger.info("E-ink cleared")
 
-    def release(self) -> None:
-        """Deep-sleep panel and free GPIO/SPI for other tools."""
-        if not self._epd:
-            return
-        try:
-            self._epd.sleep()
-        except Exception as e:
-            logger.warning("E-ink sleep failed: %s", e)
+    def _release_gpio_only(self) -> None:
         try:
             from waveshare_epd import epdconfig
 
             epdconfig.release_implementation()
         except Exception as e:
-            logger.warning("E-ink GPIO release failed: %s", e)
+            logger.debug("E-ink GPIO release: %s", e)
+
+    def release(self) -> None:
+        """Deep-sleep panel and free GPIO/SPI for other tools."""
+        if self._epd:
+            try:
+                self._epd.sleep()
+            except Exception as e:
+                logger.warning("E-ink sleep failed: %s", e)
+        self._release_gpio_only()
         self._epd = None
         self._available = False
         logger.info("E-ink released")

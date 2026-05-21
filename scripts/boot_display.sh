@@ -134,13 +134,22 @@ run_display() {
   fi
 }
 
+display_rc=0
 {
   echo "$(date -Iseconds) boot_display phase=$phase title=$title"
   run_display
-} >>"$EINK_LOG" 2>&1 || {
+} >>"$EINK_LOG" 2>&1 || display_rc=1
+if [[ "$display_rc" -ne 0 ]]; then
   echo "$(date -Iseconds) boot_display FAILED phase=$phase" >>"$EINK_LOG"
-}
-
-if [[ -n "$BOOT_LOG_MIRROR" && -f "$EINK_LOG" ]]; then
-  tail -n 500 "$EINK_LOG" >"$BOOT_LOG_MIRROR" 2>/dev/null || true
 fi
+
+# Boot partition is often read-only after first boot — never fail the display on mirror errors.
+if [[ -n "$BOOT_LOG_MIRROR" && -f "$EINK_LOG" ]]; then
+  set +e
+  if touch "$BOOT_LOG_MIRROR" 2>/dev/null; then
+    tail -n 500 "$EINK_LOG" >"$BOOT_LOG_MIRROR" 2>/dev/null
+  fi
+  set -e
+fi
+
+exit "$display_rc"
