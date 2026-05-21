@@ -216,7 +216,16 @@ class PiAmbientSynth:
         self.osc.note_off(note, velocity)
         self._refresh_playing_note_display(force=not self.play.active_notes)
 
+    def _ensure_eink(self) -> bool:
+        if not self.config.get("eink", {}).get("enabled", True):
+            return False
+        if self.eink.available:
+            return True
+        return self.eink.init()
+
     def _update_display(self, patch: Patch, favorite: bool = False) -> None:
+        if not self._ensure_eink():
+            return
         img = self.visual.render_patch(patch, battery=self._battery_for_display())
         if favorite:
             from PIL import ImageDraw
@@ -340,7 +349,7 @@ class PiAmbientSynth:
             "show_playing_note", True
         ):
             return
-        if self.config.get("eink", {}).get("enabled", True) and self.eink.available:
+        if self.config.get("eink", {}).get("enabled", True):
             self._update_display(self._patch)
 
     def run(self) -> None:

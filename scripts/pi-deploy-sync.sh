@@ -329,8 +329,6 @@ do_deploy() {
     export FIRST_BOOT_TRACK=1
     export FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}"
     eink_status boot "First boot" "Pi Ambient Synth" "initial setup"
-  else
-    eink_status boot "Starting" "Checking for updates" ""
   fi
 
   if ! load_deploy_conf; then
@@ -345,8 +343,8 @@ do_deploy() {
 
   if [[ "$MODE" == "bootstrap" ]]; then
     eink_status network "Deploy setup" "loading config" ""
+    eink_status checking "Checking GitHub" "$repo_label" "$branch_label"
   fi
-  eink_status checking "Checking GitHub" "$repo_label" "$branch_label"
 
   current_sha="$(installed_sha)"
   if ! target_sha="$(resolve_target_sha)"; then
@@ -376,6 +374,8 @@ do_deploy() {
     return 0
   fi
 
+  # From here an update is applied — show deploy progress on e-ink (not on routine 60s polls).
+  export EINK_FORCE=1
   eink_status download "Pulling update" "$short_sha" "$repo_label"
 
   case "${DEPLOY_SOURCE:-github}" in

@@ -55,8 +55,8 @@ eink:
   height: 122
   rotate: 0
   update_on_reseed: true
-  partial_refresh: false
-  full_refresh_boot: true
+  partial_refresh: true
+  full_refresh_boot: false
   show_text_labels: true
   show_playing_note: true
   note_refresh_seconds: 0.5

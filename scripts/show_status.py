@@ -81,14 +81,7 @@ def show_status(
         total_steps=total_steps,
         battery=battery,
     )
-    full = os.environ.get("EINK_FORCE") == "1" or phase in (
-        "boot",
-        "wifi",
-        "network",
-        "install",
-        "ready",
-        "failed",
-    )
+    full = os.environ.get("EINK_FORCE") == "1" or phase in ("boot", "failed")
     try:
         display.show_image(img, full_refresh=full)
     finally:
@@ -113,9 +106,19 @@ def restore_patch() -> int:
     if not patch:
         patch = PatchGenerator(config).generate()
     display = EInkDisplay(config)
-    display.init()
-    img = VisualGenerator(config).render_patch(patch)
-    display.show_patch(patch, img)
+    if not display.init():
+        display.release()
+        return 1
+    battery = None
+    if config.get("pisugar", {}).get("show_on_display", True):
+        battery = read_battery_snapshot(config)
+        if not battery.available:
+            battery = None
+    img = VisualGenerator(config).render_patch(patch, battery=battery)
+    try:
+        display.show_image(img, full_refresh=False)
+    finally:
+        display.release()
     return 0
 
 

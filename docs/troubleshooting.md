@@ -351,6 +351,8 @@ That stops GhostRoll, **disables** it, and **masks** units so they do not start 
 curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/free_eink_for_ambient.sh" | bash
 ```
 
+**Display keeps flash-clearing (white flashes) but synth art appears briefly:** the deploy timer was updating e-ink every 60s even when already up to date, each time running a full ghost-clear purge. Current `main` skips e-ink on routine polls and only shows deploy progress when a real update runs. After pulling, restart the synth service once: `sudo systemctl restart pi-ambient-synth`.
+
 **GPIO busy / `got root` in e-ink log:** never run `boot_display.sh` or `eink_pull_and_refresh.sh` as root. Use `sudo -u pi` or the curl scripts (they re-exec as `pi` automatically). Example:
 
 ```bash

@@ -173,12 +173,9 @@ class EInkDisplay:
         if not self.available:
             logger.warning("E-ink stub: display not initialized — image not shown")
             return
-        import os
 
-        use_full = (
-            full_refresh
-            or os.environ.get("EINK_FORCE") == "1"
-            or (self.full_refresh_boot and self._frame_count == 0)
+        use_full = full_refresh or (
+            self.full_refresh_boot and self._frame_count == 0
         )
         if use_full:
             self._purge_panel()
@@ -204,6 +201,9 @@ class EInkDisplay:
         battery=None,
     ) -> None:
         from status_display import StatusDisplay
+
+        if not self.available and not self.init():
+            return
 
         if battery is None and config is not None:
             from pisugar_battery import read_battery_snapshot

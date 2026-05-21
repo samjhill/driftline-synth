@@ -23,7 +23,6 @@ if [[ "$(id -un)" != "pi" ]] && [[ "${EINK_AS_USER:-0}" != "1" ]] && [[ "${EINK_
   echo "WARN: e-ink expects user pi (got $(id -un)); GPIO may fail" >&2
 fi
 
-export EINK_FORCE=1
 EINK_LOG="${EINK_LOG:-/var/log/pi-ambient-synth-eink.log}"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
@@ -147,7 +146,10 @@ fi
 
 run_display() {
   local display_timeout="${EINK_DISPLAY_TIMEOUT:-50}"
-  export PYTHONPATH="$src" HOME=/home/pi GPIOZERO_PIN_FACTORY=lgpio EINK_FORCE=1
+  export PYTHONPATH="$src" HOME=/home/pi GPIOZERO_PIN_FACTORY=lgpio
+  case "$phase" in
+    boot|wifi|network|install|ready|failed) export EINK_FORCE=1 ;;
+  esac
   cd /home/pi || return 1
   rm -f .lgd-* 2>/dev/null || true
   if command -v timeout &>/dev/null; then
