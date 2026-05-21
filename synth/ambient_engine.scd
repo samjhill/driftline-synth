@@ -64,7 +64,10 @@ s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
 	// scsynth started by scripts/start_scsynth_alsa.sh (jackd + JACK client)
-	s.options.booting = false;
+	// Pi SC 3.13 has no ServerOptions.booting — do not call s.boot here.
+	if(s.options.respondsTo(\booting), {
+		s.options.booting = false;
+	});
 	s.sync;
 	if(s.serverRunning == true, {
 		("scsynth connected (external jackd) — device: %, rate: %".format(
