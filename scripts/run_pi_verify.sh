@@ -58,7 +58,7 @@ pi_rsync "$ROOT/scripts/pi_verify.sh" "$ROOT/scripts/start_scsynth_alsa.sh" \
   "$ROOT/scripts/run_sclang_engine.sh" "$ROOT/scripts/engine_smoke_pi.sh" \
   "$ROOT/scripts/diagnose_scsynth_audio.sh" "$HOST:$REMOTE/scripts/"
 pi_rsync "$ROOT/synth/pi_bind_port.scd" "$ROOT/synth/ambient_engine.scd" "$HOST:$REMOTE/synth/"
-pi_rsync "$ROOT/systemd/supercollider.service" "$HOST:$REMOTE/systemd/"
+pi_rsync "$ROOT/systemd/supercollider.service" "$ROOT/systemd/pi-ambient-synth.service" "$HOST:$REMOTE/systemd/"
 
 pi_ssh "$HOST" "chmod +x $REMOTE/scripts/*.sh"
 

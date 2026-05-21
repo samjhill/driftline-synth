@@ -123,8 +123,11 @@ do_sync() {
     || fail "ambient_engine.scd missing sc313-selectKr marker"
 }
 
-install_unit() {
+install_units() {
   sudo cp "$INSTALL_DIR/systemd/supercollider.service" /etc/systemd/system/supercollider.service
+  if [[ -f "$INSTALL_DIR/systemd/pi-ambient-synth.service" ]]; then
+    sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth.service" /etc/systemd/system/pi-ambient-synth.service
+  fi
   sudo mkdir -p /etc/systemd/system/supercollider.service.d
   sudo tee /etc/systemd/system/supercollider.service.d/audio.conf >/dev/null <<EOF
 [Service]
@@ -151,7 +154,7 @@ audio_period_for_attempt() {
 }
 
 do_audio() {
-  install_unit
+  install_units
   local n period
   for n in $(seq 1 "$AUDIO_RETRIES"); do
     period="$(audio_period_for_attempt "$n")"
@@ -200,6 +203,8 @@ do_services() {
   pkill -x sclang 2>/dev/null || true
   free_alsa
   sleep 2.0
+  install_units
+  sudo systemctl daemon-reload
   sudo systemctl reset-failed supercollider.service pi-ambient-synth.service 2>/dev/null || true
   rm -f "$MARKER_DIR/sc-engine-ready" 2>/dev/null || true
   sudo systemctl start supercollider.service
