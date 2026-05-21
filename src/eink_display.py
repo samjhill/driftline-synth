@@ -50,13 +50,19 @@ def _load_epd_modules() -> None:
     for name in _EPD_CLASS_NAMES:
         try:
             mod = __import__(f"waveshare_epd.{name}", fromlist=[name])
-            _epd_module = getattr(mod, name)
+            # Waveshare e-Paper drivers expose the panel class as EPD, not epd2in13_V4.
+            if not hasattr(mod, "EPD"):
+                raise AttributeError(
+                    f"module 'waveshare_epd.{name}' has no EPD class"
+                )
+            _epd_module = mod
             _WAVESHARE_AVAILABLE = True
             mod_file = getattr(mod, "__file__", "")
             logger.debug("Using Waveshare driver %s (%s)", name, mod_file)
             return
         except (ImportError, AttributeError, OSError) as e:
             last_error = e
+            logger.debug("Waveshare driver %s unavailable: %s", name, e)
             continue
     _WAVESHARE_AVAILABLE = False
     _epd_module = None

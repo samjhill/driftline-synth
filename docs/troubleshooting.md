@@ -272,6 +272,23 @@ Wait ~15s for the flash cycle to finish. Stop other services first if GPIO is bu
 sudo systemctl stop pi-ambient-synth
 ```
 
+## E-ink log: `module 'waveshare_epd.epd2in13' has no attribute 'epd2in13'`
+
+The bundled Waveshare driver exposes `class EPD` inside each module (e.g. `epd2in13_V4`), not a class named `epd2in13_V4`. Pull latest `main` (fixes `src/eink_display.py`), then on the Pi:
+
+```bash
+cd ~/pi-ambient-synth
+git pull
+./scripts/ensure_waveshare_vendor.sh
+EINK_FORCE=1 ./scripts/boot_display.sh ready "Test" "driver OK" ""
+```
+
+If the error persists, remove a conflicting system install so Python loads `vendor/waveshare` only:
+
+```bash
+sudo rm -rf /usr/local/lib/python3.*/dist-packages/waveshare_epd
+```
+
 ## E-ink display does not update
 
 - SPI enabled: `ls /dev/spidev*`
