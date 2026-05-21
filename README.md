@@ -137,6 +137,16 @@ sudo reboot
 
 ### Dev / test commands
 
+**Before pushing `synth/ambient_engine.scd` changes** (catches SC syntax without deploying to the Pi):
+
+```bash
+./scripts/validate_ambient_engine.sh          # static only (fast, no SuperCollider)
+./scripts/validate_ambient_engine.sh --sclang # full smoke test on Linux; on macOS runs static only
+pytest tests/test_ambient_engine_scd.py -v
+```
+
+Install SuperCollider locally: `brew install --cask supercollider` (macOS) or `sudo apt install supercollider` (Linux).
+
 ```bash
 ./scripts/run_dev.sh --no-eink
 python scripts/list_midi_devices.py --monitor

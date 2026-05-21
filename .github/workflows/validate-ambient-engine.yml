@@ -1,0 +1,29 @@
+name: Validate ambient engine
+
+on:
+  push:
+    paths:
+      - "synth/ambient_engine.scd"
+      - "scripts/validate_ambient_engine.*"
+      - ".github/workflows/validate-ambient-engine.yml"
+  pull_request:
+    paths:
+      - "synth/ambient_engine.scd"
+      - "scripts/validate_ambient_engine.*"
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python3 scripts/validate_ambient_engine.py synth/ambient_engine.scd
+
+  sclang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y supercollider
+      - run: ./scripts/validate_ambient_engine.sh --sclang

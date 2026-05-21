@@ -419,6 +419,11 @@ if(s.serverRunning, {
 	"Pi Ambient Synth listening on OSC port %".format(port).postln;
 });
 
-// Block the main sclang thread so systemd Type=simple stays active.
-while { true } { 1.wait };
+// Block the main sclang thread so systemd Type=simple stays active (skip when SC_ENGINE_TEST=1).
+if(getenv("SC_ENGINE_TEST").notNil, {
+	"Pi Ambient Synth ENGINE_TEST ok".postln;
+	0.exit;
+}, {
+	while { true } { 1.wait };
+});
 )
