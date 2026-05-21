@@ -21,3 +21,4 @@ out/
 results.txt
 vendor/wheels/
 vendor/e-Paper-tmp/
+.pi-ssh-credentials

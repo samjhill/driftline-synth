@@ -126,9 +126,13 @@ cd ~/pi-ambient-synth
 From your **Mac** (rsync this repo — no commit-pinned curl chain):
 
 ```bash
+./scripts/run_pi_verify.sh --save-password   # once: stores ~/.gitignored creds + needs sshpass
+brew install hudochenkov/sshpass/sshpass
 ./scripts/run_pi_verify.sh
 # PASS or FAIL + log tails; result: /var/lib/pi-ambient-synth/verify-last.txt
 ```
+
+Password is stored in repo-root `.pi-ssh-credentials` (chmod 600, gitignored). Without sshpass, SSH uses a single shared connection (one password prompt per run).
 
 On the **Pi** only (pulls `main` from GitHub):
 
