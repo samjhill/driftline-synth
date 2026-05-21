@@ -10,7 +10,10 @@ import time
 try:
     import mido
 except ImportError:
-    print("Install mido and python-rtmidi: pip install mido python-rtmidi")
+    print("mido not found for this Python.")
+    print("On the Pi use the project venv (system pip is blocked):")
+    print("  ~/pi-ambient-synth/.venv/bin/python ~/pi-ambient-synth/scripts/list_midi_devices.py")
+    print("Or: cd ~/pi-ambient-synth && .venv/bin/pip install mido python-rtmidi")
     sys.exit(1)
 
 
