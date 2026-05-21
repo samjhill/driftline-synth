@@ -74,6 +74,6 @@ if [[ "$st" -eq 0 ]]; then
   echo "==> PASS"
   exit 0
 fi
-echo "==> FAIL (exit $st) — logs on Pi:"
-echo "    ssh $HOST tail -30 /tmp/scsynth-alsa-start.log /tmp/pi-ambient-engine-smoke.log"
+echo "==> FAIL (exit $st) — fetching Pi logs ..."
+pi_ssh "$HOST" "tail -35 /tmp/scsynth-alsa-start.log /tmp/pi-ambient-engine-smoke.log 2>/dev/null; $REMOTE/scripts/diagnose_scsynth_audio.sh 2>/dev/null | tail -25" || true
 exit "$st"

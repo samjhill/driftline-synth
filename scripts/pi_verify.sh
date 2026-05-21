@@ -18,7 +18,7 @@ REF="${GITHUB_REF:-main}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 RESULT_FILE="${PI_VERIFY_RESULT:-$MARKER_DIR/verify-last.txt}"
 LOG="${PI_VERIFY_LOG:-/var/log/pi-ambient-verify.log}"
-AUDIO_RETRIES="${PI_AUDIO_RETRIES:-5}"
+AUDIO_RETRIES="${PI_AUDIO_RETRIES:-3}"
 ENGINE_TIMEOUT="${ENGINE_SMOKE_TIMEOUT:-180}"
 
 export SC_HEADLESS_ALSA=1
@@ -26,7 +26,6 @@ export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 export JACK_NO_START_SERVER=1
 export JACK_NO_AUDIO_RESERVATION=1
 export SC_JACK_NPERIODS="${SC_JACK_NPERIODS:-3}"
-export SCSYNTH_ZEROCONF="${SCSYNTH_ZEROCONF:-0}"
 
 fail() {
   local msg="$1"
@@ -65,15 +64,26 @@ resolve_ref() {
     | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])"
 }
 
+stop_audio_stack() {
+  local port="${SC_SYNTH_PORT:-57110}"
+  pkill -x scsynth 2>/dev/null || true
+  pkill -x jackd 2>/dev/null || true
+  pkill -9 -x scsynth 2>/dev/null || true
+  pkill -9 -x jackd 2>/dev/null || true
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${port}/udp" 2>/dev/null || true
+  fi
+  sleep 1.0
+  rm -f /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true
+}
+
 free_alsa() {
   for svc in pipewire pipewire-pulse wireplumber pulseaudio jackd2; do
     sudo systemctl stop "$svc" 2>/dev/null || true
   done
   pkill -x sclang 2>/dev/null || true
-  pkill -x scsynth 2>/dev/null || true
-  pkill -x jackd 2>/dev/null || true
+  stop_audio_stack
   sleep 1.0
-  rm -f /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true
 }
 
 stack_up() {
@@ -125,7 +135,6 @@ Environment=SC_HEADLESS_ALSA=1
 Environment=SC_AUDIO_DEVICE=hw:0,0
 Environment=SC_JACK_PERIOD=4096
 Environment=SC_JACK_NPERIODS=3
-Environment=SCSYNTH_ZEROCONF=0
 EOF
   sudo systemctl daemon-reload
 }
@@ -153,8 +162,9 @@ do_audio() {
       log "audio up: $(pgrep -a jackd | head -1) | $(pgrep -a scsynth | head -1)"
       return 0
     fi
-    log "audio attempt $n failed"
-    sleep 1.5
+    log "audio attempt $n failed — teardown"
+    stop_audio_stack 2>/dev/null || free_alsa
+    sleep 2.0
   done
   fail "jackd+scsynth failed after $AUDIO_RETRIES attempts"
 }
