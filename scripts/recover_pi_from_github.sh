@@ -69,6 +69,9 @@ sudo chown pi:pi "$INSTALL_DIR/.deploy_sha" "$MARKER_DIR/last_deploy_sha" "$MARK
 
 sudo usermod -aG adm,audio,gpio,spi,dialout pi 2>/dev/null || true
 sudo modprobe snd-seq 2>/dev/null || true
+if [[ -x "$INSTALL_DIR/scripts/setup_pi_audio.sh" ]]; then
+  bash "$INSTALL_DIR/scripts/setup_pi_audio.sh" || log "WARN: setup_pi_audio failed"
+fi
 
 log "Restarting services"
 sudo systemctl daemon-reload

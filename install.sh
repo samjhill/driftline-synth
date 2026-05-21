@@ -137,7 +137,12 @@ sudo cp "$ROOT/systemd/pi-ambient-synth-boot-display.service" /etc/systemd/syste
 sudo cp "$ROOT/systemd/pi-ambient-synth-audio-display.service" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-monitor.service" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-network-announce.service" /etc/systemd/system/
-chmod +x "$ROOT/scripts/boot_display.sh" "$ROOT/scripts/announce_network.sh"
+chmod +x "$ROOT/scripts/boot_display.sh" "$ROOT/scripts/announce_network.sh" \
+  "$ROOT/scripts/setup_pi_audio.sh" "$ROOT/scripts/diagnose_audio.sh" 2>/dev/null || true
+if [[ -x "$ROOT/scripts/setup_pi_audio.sh" ]]; then
+  echo "==> Pi audio (headphone jack, no JACK)..."
+  bash "$ROOT/scripts/setup_pi_audio.sh" || echo "WARN: setup_pi_audio.sh failed"
+fi
 sudo systemctl daemon-reload
 sudo systemctl enable pi-ambient-synth-deploy.timer
 sudo systemctl enable pi-ambient-synth-boot-display.service

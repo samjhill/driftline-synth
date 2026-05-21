@@ -126,7 +126,7 @@ SynthDef(\piAmbientVoice, {
 }).add;
 
 SynthDef(\piTextureDrone, {
-	|out=0, root=48, density=0.5, noise=0.05, rev=0.45, duck=1.0, shimmer=0.0|
+	|out=0, root=48, density=0.5, noise=0.05, rev=0.45, duck=1.0, shimmer=0.0, amp=1.0|
 	var freq, sig, fifth, oct, pan;
 	freq = root.midicps;
 	fifth = (root + 7).midicps;
@@ -138,7 +138,7 @@ SynthDef(\piTextureDrone, {
 		LPF.ar(PinkNoise.ar(noise * 0.04), 800),
 		SinOsc.ar(oct * 2, 0, shimmer * 0.03)
 	]);
-	sig = sig * LFNoise1.kr(0.02).range(0.4, 1.0) * duck;
+	sig = sig * LFNoise1.kr(0.02).range(0.4, 1.0) * duck * amp;
 	pan = SinOsc.kr(0.03 + (SinOsc.kr(0.01) * 0.02)).range(-0.55, 0.55);
 	Out.ar(out, Pan2.ar(sig, pan));
 	Out.ar(4, sig * rev * 0.6);
@@ -174,12 +174,36 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 	ReplaceOut.ar(out, LeakDC.ar(sig));
 }).add;
 
+~configureServerAudio = {
+	var opt = Server.default.options;
+	var env = getenv("SC_AUDIO_DEVICE");
+	opt.numOutputBusChannels = 2;
+	opt.numInputBusChannels = 2;
+	opt.sampleRate = 44100;
+	if(env.notNil && { env.size > 0 }, {
+		"SC_AUDIO_DEVICE=%".format(env).postln;
+		opt.device = env;
+	}, {
+		"SC_AUDIO_DEVICE unset — SuperCollider default ALSA device".postln;
+	});
+};
+
+~textureAmp = { |vol|
+	if(textureSynth.notNil, {
+		textureSynth.set(\amp, (vol ? masterVol) * 1.35);
+	});
+};
+
 fork {
 	var port = 57120;
 	"Booting Pi Ambient Synth engine...".postln;
 	s = Server.local;
+	~configureServerAudio.();
 	if(s.serverRunning.not, { s.boot; 0.5.wait });
 	s.sync;
+	("scsynth running — device: %, out ch: %".format(
+		s.options.device, s.options.numOutputBusChannels
+	)).postln;
 
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
@@ -187,7 +211,7 @@ fork {
 	Synth.tail(synthGroup, \piDelayFx, [\inBus, 6, \out, 0, \mix, 0.2, \dt, 0.5]);
 	Synth.tail(synthGroup, \piReverbFx, [\inBus, 4, \out, 0, \mix, 0.45, \room, 0.8]);
 	limiterSynth = Synth.tail(synthGroup, \piLimiter, [\in, 0, \out, 0, \level, 0.85]);
-	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5]);
+	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5, \amp, masterVol * 1.35]);
 
 	~voices = IdentityDictionary.new;
 	~noteActivity = 0;
@@ -276,6 +300,7 @@ fork {
 		var val = msg[2];
 		if(key == \master_volume, {
 			masterVol = val;
+			~textureAmp.(val);
 		}, {
 			if(val.isKindOf(String), { val = val.asFloat });
 			~setParam.(key, val);

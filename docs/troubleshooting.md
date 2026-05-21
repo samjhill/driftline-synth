@@ -48,12 +48,49 @@ python3 scripts/list_midi_devices.py
 
 Re-plug the KeyStep USB data cable, then `sudo systemctl restart pi-ambient-synth`.
 
-## No sound
+## No sound / headphones silent
 
-1. Confirm SuperCollider is running: `systemctl status supercollider` or watch `sclang` output.
-2. Check default audio device: `aplay -l`, `speaker-test -t wav -c 2`.
-3. Run OSC test: `python scripts/test_osc.py` (with engine running).
-4. Verify volume in `config/default.yaml` (`audio.default_volume`).
+1. **OS audio first** — you should hear the test tone on the **3.5 mm jack** (not HDMI):
+
+```bash
+bash ~/pi-ambient-synth/scripts/setup_pi_audio.sh
+speaker-test -t wav -c 2 -l 1
+```
+
+If `speaker-test` is silent, fix Pi routing/volume before SuperCollider (`raspi-config` → Audio → Headphones, or plug headphones in before boot).
+
+2. **SuperCollider** — must be `active` and log `scsynth running` / `listening on OSC port 57120`:
+
+```bash
+bash ~/pi-ambient-synth/scripts/diagnose_audio.sh
+sudo systemctl restart supercollider pi-ambient-synth
+sudo journalctl -u supercollider -n 30 --no-pager
+```
+
+3. **JACK** — `jackd2` must **not** be running (it grabs ALSA). `setup_pi_audio.sh` disables it.
+
+4. **Wrong ALSA device** — if HDMI is default, force the jack:
+
+```bash
+# List devices
+aplay -L | head -20
+# Try in /etc/systemd/system/supercollider.service.d/device.conf :
+# [Service]
+# Environment=SC_AUDIO_DEVICE=hw:0,0
+sudo systemctl daemon-reload
+sudo systemctl restart supercollider
+```
+
+5. **OSC test** (bypasses MIDI):
+
+```bash
+cd ~/pi-ambient-synth
+.venv/bin/python scripts/test_osc.py
+```
+
+6. **KeyStep keyboard split** — notes **below G3 (MIDI 55)** only shift the drone; play **higher keys** for melody. The idle drone should still be faintly audible when SC is running.
+
+7. Volume in `config/default.yaml` (`audio.default_volume`, default `0.65`).
 
 ## SuperCollider won't boot
 

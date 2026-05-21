@@ -12,6 +12,8 @@ Environment=HOME=/home/pi
 Environment=PI_AMBIENT_ROOT=/home/pi/pi-ambient-synth
 Environment=SC_JACK_DEFAULT_INPUTS=
 Environment=SC_JACK_DEFAULT_OUTPUTS=
+# ALSA output (Pi headphone jack). Override in /etc/default/pi-ambient-synth if needed.
+Environment=SC_AUDIO_DEVICE=default
 # env(1) forces headless Qt; unit Environment alone may be ignored by some sclang builds.
 ExecStart=/home/pi/pi-ambient-synth/scripts/run_sclang_engine.sh
 Restart=on-failure
