@@ -105,6 +105,8 @@ do_sync() {
     scripts/engine_smoke_pi.sh \
     scripts/diagnose_scsynth_audio.sh \
     scripts/restart_synth_services.sh \
+    scripts/pi_e2e_verify.sh \
+    scripts/simulate_midi_e2e.py \
     scripts/lib/audio_stack.sh \
     synth/pi_bind_port.scd \
     synth/ambient_engine.scd \
