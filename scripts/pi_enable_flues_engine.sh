@@ -35,4 +35,4 @@ fi
 
 sleep 2
 [[ -x "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" ]] && "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" || true
-echo "==> Flues-Synth enabled. Play KeyStep — voices from Flues on 3.5 mm jack."
+echo "==> Flues-Synth enabled (KeyStep → Flues directly). SHIFT+PLAY reseed: use monitor Reseed until MIDI bridge is re-enabled."

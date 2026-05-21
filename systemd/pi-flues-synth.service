@@ -11,10 +11,11 @@ User=pi
 WorkingDirectory=/home/pi/pi-ambient-synth
 Environment=HOME=/home/pi
 Environment=FLUES_CONTROL_NOTES=0
-ExecStartPre=/bin/sh -c 'pkill -x flues-synth jackd scsynth sclang 2>/dev/null || true; sleep 0.5'
+# Do not pkill flues-synth here — systemd restart would kill a running engine.
+ExecStartPre=/bin/sh -c 'pkill -x jackd scsynth sclang 2>/dev/null || true; sleep 0.3'
 ExecStart=/home/pi/pi-ambient-synth/bin/flues-synth plughw:0,0
-Restart=on-failure
-RestartSec=5
+Restart=always
+RestartSec=3
 TimeoutStartSec=30
 StandardOutput=journal
 StandardError=journal

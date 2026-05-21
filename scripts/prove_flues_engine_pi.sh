@@ -15,9 +15,6 @@ systemctl is-active --quiet pi-flues-synth.service \
   || { log "FAIL: pi-flues-synth not active"; exit 1; }
 pgrep -x flues-synth >/dev/null || { log "FAIL: flues-synth process missing"; exit 1; }
 
-systemctl is-active --quiet pi-ambient-synth-midi.service \
-  || { log "FAIL: pi-ambient-synth-midi not active"; exit 1; }
-
 [[ -x "$PY" ]] && "$PY" -c "
 import sys
 sys.path.insert(0, '$INSTALL_DIR/src')

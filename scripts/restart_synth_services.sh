@@ -39,10 +39,8 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
   rm -f "$READY" 2>/dev/null || true
   echo "flues" | sudo tee "$MARKER_DIR/audio-backend.txt" >/dev/null
 
-  log "start MIDI bridge (KeyStep) before Flues"
-  sudo systemctl start pi-ambient-synth-midi.service
-  sleep 2
-  log "start pi-flues-synth"
+  log "start pi-flues-synth (owns KeyStep MIDI via ALSA autoconnect)"
+  sudo systemctl stop pi-ambient-synth-midi.service 2>/dev/null || true
   if [[ ! -x "$INSTALL_DIR/bin/flues-synth" ]]; then
     echo "ERROR: $INSTALL_DIR/bin/flues-synth missing — run install_flues_synth.sh on Pi" >&2
     exit 1
@@ -64,8 +62,27 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
   log "start pi-ambient-synth (monitor/e-ink)"
   sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
   sleep 2
-  [[ -x "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" ]] && "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" || true
-  systemctl is-active pi-flues-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
+  if [[ -x "$INSTALL_DIR/.venv/bin/python" && -f "$INSTALL_DIR/src/flues_client.py" ]]; then
+    "$INSTALL_DIR/.venv/bin/python" -c "
+import sys
+sys.path.insert(0, '$INSTALL_DIR/src')
+from config_loader import load_config, resolve_data_path, install_root
+from state_store import StateStore
+from patch_generator import PatchGenerator
+from patch_resolve import resolve_current_patch
+from flues_client import apply_patch, open_flues_output
+root = install_root()
+cfg = load_config()
+store = StateStore(resolve_data_path(cfg['app']['state_path'], root), resolve_data_path(cfg['app']['favorites_path'], root))
+gen = PatchGenerator(cfg)
+p = resolve_current_patch(cfg, store, gen)
+out = open_flues_output()
+if out and p:
+    apply_patch(out, p)
+    print('Applied patch to Flues:', p.summary())
+" 2>/dev/null || true
+  fi
+  systemctl is-active pi-flues-synth.service 2>/dev/null || true
   if [[ "${PI_SKIP_DEPLOY_TIMER:-0}" != "1" ]]; then
     sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
   else
