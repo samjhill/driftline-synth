@@ -12,7 +12,7 @@
 #   FULL_SYNC=1  — run scripts/pi-deploy-sync.sh sync (slow; uses install.sh)
 set -euo pipefail
 
-EINK_REFRESH_VERSION=4
+EINK_REFRESH_VERSION=5
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 GITHUB_REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
@@ -20,6 +20,26 @@ PHASE="${1:-ready}"
 TITLE="${2:-Updated}"
 DETAIL="${4:-}"
 
+# raw.githubusercontent.com often caches branch HEAD; re-run the on-disk copy if newer.
+maybe_reexec_installed() {
+  [[ "${EINK_REEXEC:-0}" == "1" ]] && return 0
+  local inst="$INSTALL_DIR/scripts/eink_pull_and_refresh.sh"
+  [[ -r "$inst" ]] || return 0
+  local inst_ver
+  inst_ver="$(grep -E '^EINK_REFRESH_VERSION=' "$inst" | head -1 | cut -d= -f2 | tr -cd '0-9')"
+  inst_ver="${inst_ver:-0}"
+  if [[ "$inst_ver" -gt "$EINK_REFRESH_VERSION" ]]; then
+    echo "==> Re-running installed script v${inst_ver} (curl had v${EINK_REFRESH_VERSION})"
+    export EINK_REEXEC=1
+    exec env \
+      SKIP_SYNC="${SKIP_SYNC:-0}" \
+      FULL_SYNC="${FULL_SYNC:-0}" \
+      INSTALL_DIR="$INSTALL_DIR" \
+      bash "$inst" "$@"
+  fi
+}
+
+maybe_reexec_installed "$@"
 echo "==> eink_pull_and_refresh.sh v${EINK_REFRESH_VERSION}"
 
 deploy_label() {
@@ -72,6 +92,7 @@ pull_latest() {
     return
   fi
   pull_from_github_tarball
+  maybe_reexec_installed "$@"
 }
 
 if [[ "${SKIP_SYNC:-0}" != "1" ]]; then
