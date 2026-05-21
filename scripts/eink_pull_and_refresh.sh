@@ -187,7 +187,8 @@ run_boot_display() {
   stop_eink_clients
   for attempt in 1 2; do
     echo "==> E-ink display attempt $attempt (max ${display_timeout}s)..."
-    if EINK_FORCE=1 EINK_DISPLAY_TIMEOUT="$display_timeout" \
+    if sudo -u pi env EINK_FORCE=1 EINK_AS_USER=1 EINK_DISPLAY_TIMEOUT="$display_timeout" \
+      HOME=/home/pi INSTALL_DIR="$INSTALL_DIR" EINK_LOG=/var/log/pi-ambient-synth-eink.log \
       "$INSTALL_DIR/scripts/boot_display.sh" \
       "$PHASE" "$TITLE" "$SUBTITLE" "$DETAIL"; then
       return 0

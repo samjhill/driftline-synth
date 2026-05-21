@@ -351,6 +351,12 @@ That stops GhostRoll, **disables** it, and **masks** units so they do not start 
 curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/free_eink_for_ambient.sh" | bash
 ```
 
+**GPIO busy / `got root` in e-ink log:** never run `boot_display.sh` or `eink_pull_and_refresh.sh` as root. Use `sudo -u pi` or the curl scripts (they re-exec as `pi` automatically). Example:
+
+```bash
+sudo -u pi env SKIP_SYNC=1 EINK_FORCE=1 /home/pi/pi-ambient-synth/scripts/boot_display.sh ready "Test" "as pi" ""
+```
+
 Re-enable GhostRoll when you need it:
 
 ```bash

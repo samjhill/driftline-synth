@@ -5,6 +5,24 @@
 #   FIRST_BOOT_TRACK=1 boot_display.sh ...   # auto step counter (1..TOTAL)
 set -euo pipefail
 
+# GPIO/lgpio is owned by user pi; root often gets "GPIO busy" if GhostRoll/synth held the HAT.
+if [[ "$(id -un)" != "pi" ]] && [[ "${EINK_AS_USER:-0}" != "1" ]] && [[ "${EINK_ALLOW_ROOT:-0}" != "1" ]]; then
+  if id -u pi &>/dev/null && sudo -u pi true 2>/dev/null; then
+    exec sudo -u pi env \
+      EINK_AS_USER=1 \
+      EINK_FORCE="${EINK_FORCE:-1}" \
+      EINK_LOG="${EINK_LOG:-/var/log/pi-ambient-synth-eink.log}" \
+      INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}" \
+      MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}" \
+      FIRST_BOOT_TRACK="${FIRST_BOOT_TRACK:-0}" \
+      FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}" \
+      EINK_DISPLAY_TIMEOUT="${EINK_DISPLAY_TIMEOUT:-50}" \
+      HOME=/home/pi \
+      "$0" "$@"
+  fi
+  echo "WARN: e-ink expects user pi (got $(id -un)); GPIO may fail" >&2
+fi
+
 export EINK_FORCE=1
 EINK_LOG="${EINK_LOG:-/var/log/pi-ambient-synth-eink.log}"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
@@ -129,9 +147,6 @@ fi
 
 run_display() {
   local display_timeout="${EINK_DISPLAY_TIMEOUT:-50}"
-  if [[ "$(id -un)" != "pi" ]]; then
-    echo "WARN: e-ink expects user pi (got $(id -un)); GPIO may fail" >&2
-  fi
   export PYTHONPATH="$src" HOME=/home/pi GPIOZERO_PIN_FACTORY=lgpio EINK_FORCE=1
   cd /home/pi || return 1
   rm -f .lgd-* 2>/dev/null || true
