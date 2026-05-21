@@ -40,12 +40,15 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
   rm -f "$READY" 2>/dev/null || true
   echo "flues" | sudo tee "$MARKER_DIR/audio-backend.txt" >/dev/null
 
-  log "start pi-flues-synth (owns KeyStep MIDI via ALSA autoconnect)"
-  sudo systemctl stop pi-ambient-synth-midi.service 2>/dev/null || true
   if [[ ! -x "$INSTALL_DIR/bin/flues-synth" ]]; then
     echo "ERROR: $INSTALL_DIR/bin/flues-synth missing — run install_flues_synth.sh on Pi" >&2
     exit 1
   fi
+  log "start MIDI bridge first (KeyStep + SHIFT+PLAY reseed → Flues)"
+  sudo systemctl enable pi-ambient-synth-midi.service 2>/dev/null || true
+  sudo systemctl start pi-ambient-synth-midi.service
+  sleep 3
+  log "start pi-flues-synth (audio; MIDI from bridge)"
   sudo systemctl start pi-flues-synth.service
   flues_ok=0
   for _ in $(seq 1 30); do
@@ -62,6 +65,10 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
     echo "ERROR: pi-flues-synth.service not active" >&2
     journalctl -u pi-flues-synth -n 25 --no-pager >&2 || true
     exit 1
+  fi
+  if ! systemctl is-active --quiet pi-ambient-synth-midi.service; then
+    echo "WARN: pi-ambient-synth-midi not active — KeyStep/reseed may not work" >&2
+    journalctl -u pi-ambient-synth-midi -n 15 --no-pager >&2 || true
   fi
   log "start pi-ambient-synth (monitor/e-ink; no SC required)"
   sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
@@ -91,7 +98,7 @@ if out:
     print('Applied Flues keyboard voice:', p.summary() if p else 'defaults')
 " 2>/dev/null || true
   fi
-  systemctl is-active pi-flues-synth.service 2>/dev/null || true
+  systemctl is-active pi-flues-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
   if [[ "${PI_SKIP_DEPLOY_TIMER:-0}" != "1" ]]; then
     sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
   else

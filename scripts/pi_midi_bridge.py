@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from config_loader import install_root, load_config, resolve_data_path  # noqa: E402
 from logging_setup import setup_logging  # noqa: E402
 from midi_controller import MidiController, save_midi_status  # noqa: E402
-from flues_client import apply_patch, open_flues_output  # noqa: E402
+from flues_client import apply_keyboard_voice, open_flues_output  # noqa: E402
 from osc_client import OscClient  # noqa: E402
 from patch_generator import PatchGenerator  # noqa: E402
 from patch_model import Patch  # noqa: E402
@@ -61,7 +61,7 @@ def main() -> int:
                 break
             time.sleep(0.5)
         if flues_out and patch is not None:
-            apply_patch(flues_out, patch, morph_steps=1)
+            apply_keyboard_voice(flues_out, patch)
     else:
         osc = OscClient(config)
         osc.set_param("master_volume", 1.0)
@@ -123,7 +123,8 @@ def main() -> int:
         store.save_current(new)
         patch = new
         if flues_out is not None:
-            apply_patch(flues_out, new, morph_steps=max(4, int(morph)))
+            apply_keyboard_voice(flues_out, new)
+            logger.info("Flues voice updated for reseed")
         elif osc is not None:
             osc.reseed_transition(2.0)
             osc.reseed(new.seed)
@@ -172,6 +173,10 @@ def main() -> int:
     jack_script = root / "scripts" / "ensure_jack_playback.sh"
     try:
         while _running:
+            if flues_backend and flues_out is None:
+                flues_out = open_flues_output()
+                if flues_out and patch is not None:
+                    apply_keyboard_voice(flues_out, patch)
             midi.poll()
             if not flues_backend and jack_script.is_file():
                 jack_every += 1
