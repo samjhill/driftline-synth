@@ -54,6 +54,7 @@ pisugar:
   tcp_port: 8423
   command_timeout_seconds: 2.0
   poll_seconds: 90
+  charge_poll_seconds: 5
   show_on_display: true
 
 eink:

@@ -175,6 +175,8 @@ def _battery_status(config: dict[str, Any]) -> dict[str, Any]:
         "percent": snap.display_percent,
         "voltage_v": snap.voltage_v,
         "charging": snap.charging,
+        "plugged": snap.plugged,
+        "charging_indicator": snap.shows_charging_indicator,
         "label": snap.label,
     }
 
@@ -407,6 +409,10 @@ def _html_page(status: dict[str, Any]) -> str:
     bat = status.get("battery") or {}
     if bat.get("available"):
         bat_label = bat.get("label") or f"{bat.get('percent')}%"
+        if bat.get("charging_indicator"):
+            bat_label = f"{bat_label} — charging"
+        elif bat.get("plugged"):
+            bat_label = f"{bat_label} — plugged in"
         bat_row = row("PiSugar battery", bat_label, ok=(bat.get("percent") or 0) > 15)
     else:
         bat_row = row("PiSugar battery", "unavailable (pisugar-server?)", ok=None)

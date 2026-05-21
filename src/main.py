@@ -64,6 +64,7 @@ class PiAmbientSynth:
         self._reseed_morph = config.get("audio", {}).get("patch_morph_seconds", 6.0)
         self._last_note_eink_time = 0.0
         self._last_battery_poll = 0.0
+        self._last_charge_poll = 0.0
         self._battery_snapshot: BatterySnapshot | None = None
 
     def _battery_for_display(self) -> BatterySnapshot | None:
@@ -351,12 +352,51 @@ class PiAmbientSynth:
         else:
             self.eink.sleep()
 
+    def _battery_power_changed(
+        self, prev: BatterySnapshot | None, snap: BatterySnapshot
+    ) -> bool:
+        if prev is None:
+            return True
+        return (
+            prev.charging != snap.charging
+            or prev.plugged != snap.plugged
+            or prev.shows_charging_indicator != snap.shows_charging_indicator
+        )
+
+    def _redraw_patch_on_eink(self, *, force: bool = False) -> None:
+        if not self._patch or not self.config.get("eink", {}).get("enabled", True):
+            return
+        if (
+            not force
+            and self.play.active_notes
+            and self.config.get("eink", {}).get("show_playing_note", True)
+        ):
+            return
+        self._update_display(self._patch)
+
     def _maybe_refresh_battery_display(self) -> None:
         ps = self.config.get("pisugar", {})
         if not ps.get("enabled", False):
             return
-        interval = float(ps.get("poll_seconds", 90))
         now = time.monotonic()
+        prev = self._battery_snapshot
+
+        charge_interval = float(ps.get("charge_poll_seconds", 5))
+        if now - self._last_charge_poll >= charge_interval:
+            self._last_charge_poll = now
+            snap = read_battery_snapshot(self.config)
+            if snap.available and self._battery_power_changed(prev, snap):
+                self._battery_snapshot = snap
+                state = "charging" if snap.shows_charging_indicator else "on battery"
+                logger.info(
+                    "PiSugar %s%% (%s, %sV)",
+                    snap.display_percent,
+                    state,
+                    f"{snap.voltage_v:.2f}" if snap.voltage_v else "?",
+                )
+                self._redraw_patch_on_eink(force=True)
+
+        interval = float(ps.get("poll_seconds", 90))
         if now - self._last_battery_poll < interval:
             return
         self._last_battery_poll = now
@@ -365,19 +405,11 @@ class PiAmbientSynth:
         if not snap.available:
             return
         self._battery_snapshot = snap
-        changed = (
-            prev is None
-            or prev.display_percent != snap.display_percent
-            or prev.charging != snap.charging
-        )
-        if not changed or not self._patch:
+        if prev is None or prev.display_percent == snap.display_percent:
             return
-        if self.play.active_notes and self.config.get("eink", {}).get(
-            "show_playing_note", True
-        ):
+        if not self._patch:
             return
-        if self.config.get("eink", {}).get("enabled", True):
-            self._update_display(self._patch)
+        self._redraw_patch_on_eink(force=False)
 
     def run(self) -> None:
         self.startup()

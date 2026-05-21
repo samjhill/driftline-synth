@@ -78,15 +78,19 @@ def draw_battery_badge(
                 draw.line([(sx0, yy), (sx1, yy)], fill=0, width=1)
 
     pct_text = f"{pct}%"
+    if charging:
+        pct_text = f"CHG {pct_text}"
     tx = bx + body_w + cap_w + 5
-    ty = by - 1
+    ty = by - 2
     draw.text((tx, ty), pct_text, fill=0, font=font)
 
     if charging:
-        cx = bx - 8
-        cy = by + 2
-        draw.line([(cx, cy + 6), (cx + 3, cy), (cx + 3, cy + 4), (cx + 7, cy + 4)], fill=0)
-        draw.line([(cx + 3, cy + 4), (cx, cy + 10), (cx, cy + 6)], fill=0)
+        # Lightning bolt left of the gauge (readable on 2.13" e-ink)
+        cx = bx - 10
+        cy = by + 1
+        draw.line([(cx, cy + 7), (cx + 4, cy), (cx + 4, cy + 5), (cx + 9, cy + 5)], fill=0, width=1)
+        draw.line([(cx + 4, cy + 5), (cx, cy + 11), (cx, cy + 7)], fill=0, width=1)
+        draw.rectangle((bx - 12, by - 1, bx + body_w + cap_w + 58, by + body_h + 1), outline=0)
 
 
 def overlay_battery(
@@ -108,7 +112,7 @@ def overlay_battery(
         x=x,
         y=y,
         percent=pct,
-        charging=bool(snapshot.charging),
+        charging=snapshot.shows_charging_indicator,
         width=image.width,
     )
     return image

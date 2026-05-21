@@ -28,6 +28,15 @@ class BatterySnapshot:
             return None
         return max(0, min(100, int(self.percent)))
 
+    @property
+    def shows_charging_indicator(self) -> bool:
+        """Whether the UI should show a charging badge (plugged + charging allowed)."""
+        if self.charging is True:
+            return True
+        if self.plugged is True and self.charging is not False:
+            return True
+        return False
+
 
 def _pisugar_cfg(config: dict[str, Any]) -> dict[str, Any]:
     return config.get("pisugar", {})
@@ -178,11 +187,14 @@ def read_battery_snapshot(config: dict[str, Any]) -> BatterySnapshot:
             charging = True
 
     available = percent is not None
+    show_charging = charging is True or (
+        plugged is True and charging is not False
+    )
     label = ""
     if available:
         label = f"{percent}%"
-        if charging:
-            label += " ⚡"
+        if show_charging:
+            label += " charging"
         if isinstance(voltage, float):
             label += f"  {voltage:.2f}V"
 
