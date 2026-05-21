@@ -6,7 +6,7 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 RESULT_FILE="${PI_E2E_RESULT:-$MARKER_DIR/e2e-last.txt}"
-LOG="${PI_E2E_LOG:-/var/log/pi-ambient-e2e.log}"
+LOG="${PI_E2E_LOG:-$MARKER_DIR/pi-ambient-e2e.log}"
 PY="${INSTALL_DIR}/.venv/bin/python"
 SC_WAIT="${PI_E2E_SC_WAIT:-60}"
 SYNTH_WAIT="${PI_E2E_SYNTH_WAIT:-45}"
@@ -15,17 +15,23 @@ SYNTH_WAIT="${PI_E2E_SYNTH_WAIT:-45}"
 source "$INSTALL_DIR/scripts/lib/audio_stack.sh"
 
 fail() {
-  echo "E2E FAIL: $1" | tee -a "$LOG" >&2
+  log "FAIL: $1"
+  echo "E2E FAIL: $1" >&2
   echo "status=fail at=$(date -Iseconds) msg=$1" >"$RESULT_FILE"
   exit 1
 }
 
 pass() {
-  echo "E2E PASS: Pi MIDI + audio paths OK" | tee -a "$LOG"
+  log "PASS: Pi MIDI + audio paths OK"
+  echo "E2E PASS: Pi MIDI + audio paths OK"
   echo "status=pass at=$(date -Iseconds)" >"$RESULT_FILE"
 }
 
-log() { echo "$(date -Iseconds) [pi-e2e] $*" | tee -a "$LOG"; }
+log() {
+  mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+  echo "$(date -Iseconds) [pi-e2e] $*" >>"$LOG" 2>/dev/null || true
+  echo "$(date -Iseconds) [pi-e2e] $*"
+}
 
 check_supercollider() {
   systemctl is-active --quiet supercollider.service || fail "supercollider not active"
