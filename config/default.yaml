@@ -9,6 +9,8 @@ monitor:
   enabled: true
   host: "0.0.0.0"
   port: 8080
+  journal_lines: 22
+  log_tail_lines: 35
 
 midi:
   preferred_input_keywords:

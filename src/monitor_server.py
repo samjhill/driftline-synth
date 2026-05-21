@@ -16,14 +16,22 @@ from urllib.parse import urlparse
 from config_loader import load_config
 from logging_setup import setup_logging
 from network_info import network_snapshot
-from patch_model import Patch
 from state_store import StateStore
 
 logger = logging.getLogger(__name__)
 
 DEPLOY_LOG = Path("/var/log/pi-ambient-synth-deploy.log")
+EINK_LOG = Path("/var/log/pi-ambient-synth-eink.log")
 DEPLOY_SHA_FILE = Path("/home/pi/pi-ambient-synth/.deploy_sha")
 NETWORK_FILE = Path("/var/lib/pi-ambient-synth/network.json")
+MARKER_DIR = Path("/var/lib/pi-ambient-synth")
+
+SERVICE_UNITS = {
+    "supercollider": "supercollider.service",
+    "synth": "pi-ambient-synth.service",
+    "monitor": "pi-ambient-synth-monitor.service",
+    "deploy_timer": "pi-ambient-synth-deploy.timer",
+}
 
 
 def _service_state(unit: str) -> str:
@@ -39,6 +47,72 @@ def _service_state(unit: str) -> str:
         return "n/a"
 
 
+def _service_detail(unit: str) -> dict[str, str]:
+    props = (
+        "ActiveState",
+        "SubState",
+        "Result",
+        "MainPID",
+        "ExecMainStatus",
+        "NRestarts",
+    )
+    try:
+        out = subprocess.run(
+            ["systemctl", "show", unit, "--property", ",".join(props), "--no-pager"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        detail: dict[str, str] = {}
+        for line in (out.stdout or "").splitlines():
+            if "=" in line:
+                key, val = line.split("=", 1)
+                detail[key] = val
+        return detail
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return {}
+
+
+def _systemctl_status_tail(unit: str, lines: int = 10) -> list[str]:
+    try:
+        out = subprocess.run(
+            ["systemctl", "status", unit, "--no-pager", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        text = out.stdout or out.stderr or ""
+        return [ln for ln in text.splitlines() if ln.strip()][-lines:]
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return []
+
+
+def _journal_tail(unit: str, lines: int) -> tuple[list[str], str | None]:
+    try:
+        out = subprocess.run(
+            [
+                "journalctl",
+                "-u",
+                unit,
+                "-n",
+                str(lines),
+                "--no-pager",
+                "-o",
+                "short-precise",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if out.returncode != 0:
+            err = (out.stderr or out.stdout or "journalctl failed").strip()
+            return [], err[:200]
+        rows = [ln for ln in (out.stdout or "").splitlines() if ln.strip()]
+        return rows[-lines:], None
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return [], str(e)
+
+
 def _tail_file(path: Path, lines: int = 40) -> list[str]:
     if not path.is_file():
         return []
@@ -49,10 +123,22 @@ def _tail_file(path: Path, lines: int = 40) -> list[str]:
         return []
 
 
+def _read_marker_file(name: str) -> str | None:
+    path = MARKER_DIR / name
+    if not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").strip()[:500]
+    except OSError:
+        return None
+
+
 def collect_status(config: dict[str, Any]) -> dict[str, Any]:
     app = config.get("app", {})
     monitor = config.get("monitor", {})
     port = int(monitor.get("port", 8080))
+    journal_lines = int(monitor.get("journal_lines", 22))
+    log_tail_lines = int(monitor.get("log_tail_lines", 35))
 
     store = StateStore(
         Path(app.get("state_path", "./state/current_patch.json")),
@@ -74,20 +160,40 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
     if DEPLOY_SHA_FILE.is_file():
         deploy_sha = DEPLOY_SHA_FILE.read_text(encoding="utf-8").strip()[:12]
 
+    services: dict[str, str] = {}
+    service_details: dict[str, dict[str, str]] = {}
+    for key, unit in SERVICE_UNITS.items():
+        services[key] = _service_state(unit)
+        service_details[key] = _service_detail(unit)
+
+    journal_logs: dict[str, list[str]] = {}
+    journal_errors: dict[str, str] = {}
+    status_snippets: dict[str, list[str]] = {}
+    for key, unit in SERVICE_UNITS.items():
+        if key == "deploy_timer":
+            continue
+        lines, err = _journal_tail(unit, journal_lines)
+        journal_logs[key] = lines
+        if err:
+            journal_errors[key] = err
+        status_snippets[key] = _systemctl_status_tail(unit, 8)
+
     return {
         "app": app.get("name", "Pi Ambient Synth"),
+        "collected_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "uptime_seconds": int(time.time() - ps_boot_time()) if ps_boot_time() else None,
         "network": network,
-        "services": {
-            "supercollider": _service_state("supercollider.service"),
-            "synth": _service_state("pi-ambient-synth.service"),
-            "monitor": _service_state("pi-ambient-synth-monitor.service"),
-            "deploy_timer": _service_state("pi-ambient-synth-deploy.timer"),
-        },
+        "services": services,
+        "service_details": service_details,
         "patch": patch_data,
         "patch_summary": patch.summary() if patch else None,
         "deploy_sha": deploy_sha,
-        "deploy_log_tail": _tail_file(DEPLOY_LOG),
+        "deploy_log_tail": _tail_file(DEPLOY_LOG, log_tail_lines),
+        "eink_log_tail": _tail_file(EINK_LOG, log_tail_lines),
+        "network_address": _read_marker_file("network-address.txt"),
+        "journal_logs": journal_logs,
+        "journal_errors": journal_errors,
+        "status_snippets": status_snippets,
     }
 
 
@@ -102,6 +208,22 @@ def ps_boot_time() -> float | None:
     return None
 
 
+def _escape(text: str) -> str:
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _log_block(lines: list[str], *, empty: str = "No log lines.") -> str:
+    if not lines:
+        return f"<div class='log muted'>{_escape(empty)}</div>"
+    return "".join(f"<div class='log'>{_escape(line)}</div>" for line in lines)
+
+
 def _html_page(status: dict[str, Any]) -> str:
     net = status.get("network") or {}
     ip = net.get("primary_ip") or "—"
@@ -110,12 +232,10 @@ def _html_page(status: dict[str, Any]) -> str:
     monitor_url = net.get("monitor_url") or "#"
     all_ips = ", ".join(net.get("all_ips") or []) or ip
     svc = status.get("services") or {}
+    details = status.get("service_details") or {}
     patch_sum = status.get("patch_summary") or "No patch loaded"
     sha = status.get("deploy_sha") or "—"
-    log_lines = status.get("deploy_log_tail") or []
-    log_html = "".join(
-        f"<div class='log'>{_escape(line)}</div>" for line in log_lines[-25:]
-    ) or "<div class='log muted'>No deploy log yet.</div>"
+    collected = status.get("collected_at") or ""
 
     def row(label: str, value: str, ok: bool | None = None) -> str:
         td_class = "ok" if ok is True else ("bad" if ok is False else "")
@@ -123,13 +243,66 @@ def _html_page(status: dict[str, Any]) -> str:
         return f"<tr><th>{_escape(label)}</th><td{attr}>{_escape(value)}</td></tr>"
 
     svc_rows = "".join(
-        row(
-            name,
-            state,
-            ok=state == "active",
-        )
-        for name, state in svc.items()
+        row(name, state, ok=state == "active") for name, state in svc.items()
     )
+
+    detail_rows = ""
+    for name, props in details.items():
+        if not props:
+            continue
+        summary = (
+            f"{props.get('ActiveState', '?')} / {props.get('SubState', '?')} "
+            f"pid={props.get('MainPID', '0')} restarts={props.get('NRestarts', '?')} "
+            f"result={props.get('Result', '?')}"
+        )
+        ok = svc.get(name) == "active"
+        detail_rows += row(f"{name} detail", summary, ok=ok)
+
+    alerts: list[str] = []
+    for name, state in svc.items():
+        if state not in ("active", "inactive"):
+            alerts.append(
+                f"<div class='alert'>{_escape(name)}: <strong>{_escape(state)}</strong></div>"
+            )
+    journal_errors = status.get("journal_errors") or {}
+    for name, err in journal_errors.items():
+        alerts.append(
+            f"<div class='alert muted'>{_escape(name)} journal: {_escape(err)}</div>"
+        )
+
+    def section(title: str, lines: list[str], *, empty: str) -> str:
+        return f"""<section>
+    <h2>{_escape(title)}</h2>
+    {_log_block(lines, empty=empty)}
+  </section>"""
+
+    log_sections = section(
+        "Deploy log",
+        status.get("deploy_log_tail") or [],
+        empty="No deploy log yet.",
+    )
+    log_sections += section(
+        "E-ink log",
+        status.get("eink_log_tail") or [],
+        empty="No e-ink log at /var/log/pi-ambient-synth-eink.log",
+    )
+
+    journal_logs = status.get("journal_logs") or {}
+    status_snippets = status.get("status_snippets") or {}
+    for key in ("supercollider", "synth", "monitor"):
+        jlines = journal_logs.get(key) or []
+        slog = status_snippets.get(key) or []
+        combined = slog + ([""] if slog and jlines else []) + jlines
+        log_sections += section(
+            f"{key} (systemctl + journal)",
+            combined,
+            empty=f"No journal for {key}.service (add user pi to group adm?)",
+        )
+
+    net_addr = status.get("network_address")
+    net_row = ""
+    if net_addr:
+        net_row = row("network-address.txt", net_addr.replace("\n", " · ")[:120])
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -140,48 +313,40 @@ def _html_page(status: dict[str, Any]) -> str:
   <title>{_escape(status.get("app", "Pi Ambient Synth"))} — Monitor</title>
   <style>
     :root {{ font-family: system-ui, sans-serif; background: #0f1419; color: #e7ecef; }}
-    body {{ margin: 1.5rem; max-width: 52rem; }}
+    body {{ margin: 1.5rem; max-width: 56rem; }}
     h1 {{ font-size: 1.35rem; font-weight: 600; }}
+    h2 {{ font-size: 0.95rem; font-weight: 600; color: #9ab; margin: 0 0 0.5rem; }}
     .ip {{ font-size: 1.75rem; letter-spacing: 0.02em; margin: 0.5rem 0 1rem; }}
     a {{ color: #7ec8e3; }}
     table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }}
     th, td {{ text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid #2a3540; }}
-    th {{ color: #9ab; width: 11rem; font-weight: 500; }}
+    th {{ color: #9ab; width: 11rem; font-weight: 500; vertical-align: top; }}
     .ok {{ color: #6ddb8a; }}
     .bad {{ color: #f08080; }}
-    .log {{ font-family: ui-monospace, monospace; font-size: 0.78rem; color: #aab; }}
+    .log {{ font-family: ui-monospace, monospace; font-size: 0.72rem; color: #aab; line-height: 1.35; }}
     .muted {{ color: #667; }}
-    section {{ margin-top: 1.5rem; }}
+    .alert {{ background: #2a1a1a; border: 1px solid #633; color: #f0a0a0; padding: 0.5rem 0.75rem; margin: 0.5rem 0; font-size: 0.85rem; }}
+    section {{ margin-top: 1.25rem; padding: 0.75rem; background: #141a21; border-radius: 6px; }}
   </style>
 </head>
 <body>
   <h1>{_escape(status.get("app", "Pi Ambient Synth"))}</h1>
   <p class="ip">{_escape(ip)}</p>
   <p><a href="{_escape(monitor_url)}">{_escape(monitor_url)}</a> · {_escape(mdns)} · {_escape(all_ips)}</p>
+  <p class="muted">Snapshot {_escape(collected)} · auto-refresh 5s · LAN only (no auth)</p>
+  {"".join(alerts)}
   <table>
     {row("Hostname", host)}
     {row("SSH", f"ssh pi@{mdns}")}
     {row("Current patch", patch_sum)}
     {row("Deploy SHA", sha)}
+    {net_row}
     {svc_rows}
+    {detail_rows}
   </table>
-  <section>
-    <h2>Deploy log</h2>
-    {log_html}
-  </section>
-  <p class="muted">Auto-refreshes every 5s · LAN only (no auth)</p>
+  {log_sections}
 </body>
 </html>"""
-
-
-def _escape(text: str) -> str:
-    return (
-        str(text)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
 
 
 class MonitorHandler(BaseHTTPRequestHandler):
