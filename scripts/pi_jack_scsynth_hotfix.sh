@@ -18,7 +18,7 @@ case "${1:-}" in
   services-only|services) HOTFIX_SERVICES_ONLY=1 ;;
 esac
 
-PINNED_SHA="552fa39"
+PINNED_SHA="e7c61a3"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
@@ -101,8 +101,8 @@ do_fetch() {
     "$INSTALL_DIR/scripts/engine_smoke_pi.sh" \
     "$INSTALL_DIR/scripts/diagnose_scsynth_audio.sh"
 
-  if ! grep -q 'sc313-jackFork' "$INSTALL_DIR/synth/ambient_engine.scd"; then
-    log "ERROR: ambient_engine.scd missing sc313-jackFork marker"
+  if ! grep -q 'sc313-jackPiUGens' "$INSTALL_DIR/synth/ambient_engine.scd"; then
+    log "ERROR: ambient_engine.scd missing sc313-jackPiUGens marker"
     exit 1
   fi
 }

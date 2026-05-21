@@ -63,14 +63,23 @@ patchParams[\root_note] = 48;
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackFork)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackPiUGens)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
 	if(s.options.respondsTo(\booting), { s.options.booting = false });
-	s.sync;
-	bootOk = (s.serverRunning == true);
+	12.do { |i|
+		s.sync;
+		if(s.serverRunning == true, {
+			bootOk = true;
+			^nil;
+		});
+		0.5.wait;
+	};
+	if(bootOk != true, {
+		bootOk = (s.serverRunning == true);
+	});
 }, {
 	Server.killAll;
 	if(s.serverRunning == true, {
@@ -98,6 +107,14 @@ if(bootOk == true, {
 	}, {
 		"ERROR: sclang not connected to scsynth — pgrep scsynth; SC_AUDIO_DEVICE".postln;
 	});
+});
+
+if(bootOk != true, {
+	if(engineTest, {
+		"Pi Ambient Synth ENGINE_TEST failed: scsynth not connected".postln;
+		0.exit;
+	});
+	loop { 1.wait };
 });
 
 ~setParam = { |key, val|
@@ -225,7 +242,8 @@ SynthDef(\piCompanion, {
 	scale = [0, 2, 3, 5, 7, 9, 10];
 	// LFNoise0: SC 3.13 on Pi has no TWhiteNoise (added in later SC)
 	interval = LFNoise0.kr(0.08).range(3.5, 14.0);
-	deg = Latch.kr(IRand.kr(0, scale.size - 1), Dust.kr(interval));
+	// Pi SC 3.13: IRand.kr not available — use TRand.kr + floor.
+	deg = Latch.kr(TRand.kr(0, scale.size - 0.001, Dust.kr(interval)).floor.clip(0, scale.size - 1), Dust.kr(interval));
 	freq = (root + scale[deg]).midicps;
 	sig = SinOsc.ar(freq) * 0.06;
 	env = EnvGen.kr(Env.asr(1.5, 0, 4.0), gate, doneAction: 2);
