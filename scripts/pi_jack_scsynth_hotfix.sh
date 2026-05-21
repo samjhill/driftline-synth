@@ -2,7 +2,7 @@
 # Pi SC 3.13: external jackd + scsynth + sclang (SSH-safe: progress pings, optional phases).
 #
 # Full run (use tmux/screen if SSH is flaky):
-#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/caf5956/scripts/pi_jack_scsynth_hotfix.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/samjhill/driftline-synth/ef14375/scripts/pi_jack_scsynth_hotfix.sh | bash
 #
 # Split phases (recommended over SSH):
 #   HOTFIX_FETCH_ONLY=1  curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash
@@ -11,7 +11,7 @@
 #   HOTFIX_SERVICES_ONLY=1 curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash
 set -euo pipefail
 
-PINNED_SHA="caf5956"
+PINNED_SHA="ef14375"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
@@ -93,8 +93,8 @@ do_fetch() {
     "$INSTALL_DIR/scripts/engine_smoke_pi.sh" \
     "$INSTALL_DIR/scripts/diagnose_scsynth_audio.sh"
 
-  if ! grep -q 'sc313-jackJoin' "$INSTALL_DIR/synth/ambient_engine.scd"; then
-    log "ERROR: ambient_engine.scd missing sc313-jackJoin marker"
+  if ! grep -q 'sc313-jackFork' "$INSTALL_DIR/synth/ambient_engine.scd"; then
+    log "ERROR: ambient_engine.scd missing sc313-jackFork marker"
     exit 1
   fi
 }

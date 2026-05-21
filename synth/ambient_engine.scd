@@ -3,9 +3,12 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest, bootOk, bootThread;
+var port, useAlsaSynth, engineTest, bootOk;
 
 bootOk = false;
+
+// Pi SC 3.13: entire engine in one Routine (s.sync + 1.wait work; join/hang/sleep/unixCmd do not).
+fork {
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -60,29 +63,25 @@ patchParams[\root_note] = 48;
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackJoin)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackFork)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-// Pi SC 3.13: s.sync only inside a Routine; Thread:join blocks main (no CPU spin / unixCmd).
-bootThread = fork {
-	if(useAlsaSynth, {
-		if(s.options.respondsTo(\booting), { s.options.booting = false });
-		s.sync;
-		bootOk = (s.serverRunning == true);
-	}, {
-		Server.killAll;
-		if(s.serverRunning == true, {
-			s.quit;
-			0.5.wait;
-		});
-		"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
-		s.boot(~audioDevice);
-		s.sync;
-		bootOk = (s.serverRunning == true);
+if(useAlsaSynth, {
+	if(s.options.respondsTo(\booting), { s.options.booting = false });
+	s.sync;
+	bootOk = (s.serverRunning == true);
+}, {
+	Server.killAll;
+	if(s.serverRunning == true, {
+		s.quit;
+		0.5.wait;
 	});
-};
-bootThread.join;
+	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
+	s.boot(~audioDevice);
+	s.sync;
+	bootOk = (s.serverRunning == true);
+});
 if(bootOk == true, {
 	if(useAlsaSynth, {
 		("scsynth connected (external jackd) — device: %, rate: %".format(
@@ -501,6 +500,6 @@ if(engineTest, {
 	"Pi Ambient Synth ENGINE_TEST ok".postln;
 	0.exit;
 });
-// Keep sclang alive for systemd (Thread:join blocks main without Routine yield).
-fork { loop { 1.wait } }.join;
+loop { 1.wait };
+};
 )
