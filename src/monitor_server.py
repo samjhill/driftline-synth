@@ -17,6 +17,8 @@ from config_loader import load_config
 from logging_setup import setup_logging
 from midi_controller import midi_status_summary
 from network_info import network_snapshot
+from patch_generator import PatchGenerator
+from patch_resolve import resolve_current_patch
 from state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -170,8 +172,13 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
         Path(app.get("state_path", "./state/current_patch.json")),
         Path(app.get("favorites_path", "./state/favorites.json")),
     )
-    patch = store.load_current()
-    patch_data = patch.to_dict() if patch else None
+    patch = resolve_current_patch(config, store, PatchGenerator(config))
+    if not store.state_path.exists():
+        try:
+            store.save_current(patch)
+        except OSError:
+            pass
+    patch_data = patch.to_dict()
 
     network = network_snapshot(monitor_port=port)
     if NETWORK_FILE.is_file():

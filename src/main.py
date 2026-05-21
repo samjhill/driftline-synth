@@ -21,6 +21,7 @@ from midi_controller import MidiController, save_midi_status
 from osc_client import OscClient
 from note_names import format_active_notes
 from patch_generator import PatchGenerator
+from patch_resolve import resolve_current_patch
 from patch_model import Patch
 from midi_clock import MidiClock
 from play_tracker import PlayTracker
@@ -58,16 +59,14 @@ class PiAmbientSynth:
         self._last_note_eink_time = 0.0
 
     def _resolve_patch(self) -> Patch:
-        saved = self.state_store.load_current()
-        patch_cfg = self.config.get("patch", {})
-        seed = patch_cfg.get("seed")
-        evolve = patch_cfg.get("evolve_enabled", False)
-        if saved:
-            logger.info("Loaded saved patch: %s", saved.summary())
-            return saved
-        if seed is not None:
-            return self.patch_gen.generate(seed=seed, evolve_enabled=evolve)
-        return self.patch_gen.generate(evolve_enabled=evolve)
+        had_saved = self.state_store.load_current() is not None
+        patch = resolve_current_patch(self.config, self.state_store, self.patch_gen)
+        if had_saved:
+            logger.info("Loaded saved patch: %s", patch.summary())
+        else:
+            logger.info("Generated default patch: %s", patch.summary())
+            self.state_store.save_current(patch)
+        return patch
 
     def startup(self) -> None:
         vol = self.config.get("audio", {}).get("default_volume", 0.65)

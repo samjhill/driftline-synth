@@ -35,6 +35,7 @@ audio:
 
 patch:
   seed: null
+  default_seed: 1001
   evolve_enabled: false
   reseed_mode: "curated"
   default_scale_family: "ambient_modal"
