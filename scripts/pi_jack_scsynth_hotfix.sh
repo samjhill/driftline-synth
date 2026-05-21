@@ -11,7 +11,7 @@
 #   HOTFIX_SERVICES_ONLY=1 curl -fsSL .../pi_jack_scsynth_hotfix.sh | bash
 set -euo pipefail
 
-PINNED_SHA="82f9a9c"
+PINNED_SHA="caf5956"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 REF="${GITHUB_REF:-$PINNED_SHA}"
