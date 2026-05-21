@@ -149,6 +149,14 @@ if [[ -x "$ROOT/scripts/setup_pi_audio.sh" ]]; then
   bash "$ROOT/scripts/setup_pi_audio.sh" || echo "WARN: setup_pi_audio.sh failed"
 fi
 sudo systemctl daemon-reload
+
+echo "==> Disable GhostRoll autostart (Waveshare HAT → Pi Ambient Synth)..."
+if [[ -f "$ROOT/scripts/lib_disable_ghostroll.sh" ]]; then
+  # shellcheck source=scripts/lib_disable_ghostroll.sh
+  source "$ROOT/scripts/lib_disable_ghostroll.sh"
+  disable_ghostroll_autostart || true
+fi
+
 sudo systemctl enable pi-ambient-synth-deploy.timer
 sudo systemctl enable pi-ambient-synth-boot-display.service
 sudo systemctl enable pi-ambient-synth-audio-display.service

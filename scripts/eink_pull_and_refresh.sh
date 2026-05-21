@@ -125,9 +125,18 @@ wait_deploy_idle() {
 }
 
 stop_eink_clients() {
+  local lib="$INSTALL_DIR/scripts/lib_disable_ghostroll.sh"
+  if [[ -f "$lib" ]]; then
+    # shellcheck source=lib_disable_ghostroll.sh
+    source "$lib"
+    disable_ghostroll_autostart
+  else
+    sudo systemctl stop ghostroll-watch.service 2>/dev/null || true
+    sudo systemctl disable --now ghostroll-watch.service 2>/dev/null || true
+    sudo systemctl mask ghostroll-watch.service 2>/dev/null || true
+    sudo pkill -f ghostroll-eink-waveshare 2>/dev/null || true
+  fi
   echo "==> Stopping services that may hold e-ink GPIO..."
-  sudo systemctl stop ghostroll-watch.service 2>/dev/null || true
-  sudo pkill -f ghostroll-eink-waveshare 2>/dev/null || true
   sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
   sudo systemctl stop \
     pi-ambient-synth \

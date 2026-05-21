@@ -342,10 +342,21 @@ sudo rm -rf /usr/local/lib/python3.*/dist-packages/waveshare_epd
 If diagnostics show `ghostroll-eink-waveshare213v4.py` or `ghostroll-watch.service`, GhostRoll (SD ingest) owns the HAT:
 
 ```bash
+curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/disable_ghostroll_on_boot.sh" | bash
+```
+
+That stops GhostRoll, **disables** it, and **masks** units so they do not start on boot. Then test e-ink:
+
+```bash
 curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/free_eink_for_ambient.sh" | bash
 ```
 
-Then test e-ink. Re-enable GhostRoll when you need it: `sudo systemctl enable --now ghostroll-watch.service`.
+Re-enable GhostRoll when you need it:
+
+```bash
+sudo systemctl unmask ghostroll-watch.service
+sudo systemctl enable --now ghostroll-watch.service
+```
 
 ## E-ink: `GPIO busy` after another project on this Pi (e.g. ingest)
 

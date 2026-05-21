@@ -3,13 +3,17 @@
 #   curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/free_eink_for_ambient.sh" | bash
 set -euo pipefail
 
-echo "=== Free e-ink for Pi Ambient Synth ==="
+LIB="$(dirname "${BASH_SOURCE[0]:-$0}")/lib_disable_ghostroll.sh"
+if [[ ! -f "$LIB" ]]; then
+  LIB="$(mktemp)"
+  curl -fsSL "https://raw.githubusercontent.com/samjhill/driftline-synth/main/scripts/lib_disable_ghostroll.sh" -o "$LIB"
+  trap 'rm -f "$LIB"' EXIT
+fi
+# shellcheck source=lib_disable_ghostroll.sh
+source "$LIB"
 
-echo "==> Stopping GhostRoll (previous ingest) e-ink holder..."
-sudo systemctl stop ghostroll-watch.service 2>/dev/null || true
-sudo systemctl disable ghostroll-watch.service 2>/dev/null || true
-sudo pkill -f ghostroll-eink-waveshare 2>/dev/null || true
-sudo pkill -f '/usr/local/bin/ghostroll' 2>/dev/null || true
+echo "=== Free e-ink for Pi Ambient Synth ==="
+disable_ghostroll_autostart
 sleep 2
 
 echo "==> Stopping Pi Ambient Synth e-ink users..."
@@ -36,5 +40,4 @@ echo "Done. Test display as user pi:"
 echo "  cd /home/pi/pi-ambient-synth"
 echo "  SKIP_SYNC=1 EINK_FORCE=1 ./scripts/boot_display.sh ready \"Test\" \"e-ink free\" \"\""
 echo ""
-echo "Re-enable GhostRoll later if needed:"
-echo "  sudo systemctl enable --now ghostroll-watch.service"
+echo "GhostRoll will not start on boot until you unmask/enable it again."
