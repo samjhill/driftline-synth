@@ -5,8 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from typing import TYPE_CHECKING
+
 from patch_model import Patch
-from visual_generator import VisualGenerator
+
+if TYPE_CHECKING:
+    from visual_generator import VisualGenerator
 
 
 def export_sigil(patch: Patch, visual: VisualGenerator, base_dir: Path) -> Path:

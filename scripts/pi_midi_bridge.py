@@ -38,15 +38,26 @@ def main() -> int:
     )
     gen = PatchGenerator(config)
     osc = OscClient(config)
+    osc.set_param("master_volume", 1.0)
     patch: Patch | None = resolve_current_patch(config, store, gen)
     morph = float(config.get("audio", {}).get("patch_morph_seconds", 6.0))
 
     midi = MidiController(config)
 
-    def on_note_on(note: int, velocity: int, _ch: int) -> None:
-        osc.note_on(note, velocity)
+    jack_script = root / "scripts" / "ensure_jack_playback.sh"
+    _jack_ticks = 0
 
-    def on_note_off(note: int, velocity: int, _ch: int) -> None:
+    def on_note_on(note: int, velocity: int, ch: int) -> None:
+        nonlocal _jack_ticks
+        logger.info("bridge → OSC note_on ch=%s note=%s vel=%s", ch, note, velocity)
+        osc.note_on(note, velocity)
+        _jack_ticks += 1
+        if jack_script.is_file() and (_jack_ticks <= 3 or _jack_ticks % 12 == 0):
+            subprocess.run(["bash", str(jack_script)], check=False, timeout=6)
+
+    def on_note_off(note: int, velocity: int, ch: int) -> None:
+        if os.environ.get("PI_MIDI_LOG_NOTES", "").strip() in ("1", "true", "yes"):
+            logger.info("note_off ch=%s note=%s", ch, note)
         osc.note_off(note, velocity)
 
     def on_reseed() -> None:
@@ -87,9 +98,17 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
 
+    jack_every = 0
+    jack_script = root / "scripts" / "ensure_jack_playback.sh"
     try:
         while _running:
             midi.poll()
+            jack_every += 1
+            if jack_script.is_file() and jack_every >= 1500:
+                jack_every = 0
+                import subprocess
+
+                subprocess.run(["bash", str(jack_script)], check=False, timeout=8)
             time.sleep(0.002)
     finally:
         midi.stop()

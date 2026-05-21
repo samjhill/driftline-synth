@@ -115,11 +115,17 @@ cd ~/pi-ambient-synth
 .venv/bin/python scripts/test_osc.py
 ```
 
-6. **KeyStep keyboard split** — notes **below G3 (MIDI 55)** only shift the drone; play **higher keys** for melody. The idle drone should still be faintly audible when SC is running.
+6. **KeyStep keyboard split** — on the full `main.py` path, notes **below G3 (MIDI 55)** only shift the drone; play **higher keys** for melody. The headless MIDI bridge sends all notes to SuperCollider. The idle drone should still be faintly audible when SC is running.
 
-8. **SHIFT+PLAY does nothing** — KeyStep usually sends **MIDI Start** (`0xFA`), not CC 102. Recent builds handle `start`/`stop` realtime messages. Hold **Shift** (often CC 63 ≥ 64), press **Play**, and check `journalctl -u pi-ambient-synth -f` for `SHIFT+PLAY (MIDI start) → reseed`. Debug: `systemctl edit pi-ambient-synth` → add `ExecStart=.../main.py --debug-midi` temporarily.
+7. **Keys silent after SHIFT+PLAY (reseed)** — if Shift (CC 63) stays ≥ 64, older builds swallowed all `note_on` while shift was held. Release Shift, or upgrade `midi_controller.py` (melody keys pass through with shift held). Enable `PI_MIDI_LOG_NOTES=1` on `pi-ambient-synth-midi.service` and `journalctl -u pi-ambient-synth-midi -f` while playing keys to confirm MIDI reaches the bridge.
 
-9. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
+8. **MIDI logs show `ch=14` and very low velocity (e.g. vel 11)** — Arturia KeyStep **MPE** mode sends per-note MIDI on channel 15 (`ch=14` in logs) with weak velocity. Either disable MPE in **MIDI Control Center** (use single MIDI channel), or rely on `midi.velocity_floor` (default 72) in `config/default.yaml`. After deploy, logs should show `vel 11 → floored to 72` and `playNote` with `used 72`.
+
+9. **Sound tab “Test note” silent but journal shows `playNote`** — JACK may have dropped `SuperCollider:out → system:playback`. Run `~/pi-ambient-synth/scripts/ensure_jack_playback.sh`, raise headphone PCM (`amixer -c 0 set PCM 95%`), and use the updated **Test note** button (plays a loud beep + C4 and sets master volume to 100%).
+
+10. **SHIFT+PLAY does nothing** — KeyStep usually sends **MIDI Start** (`0xFA`), not CC 102. Recent builds handle `start`/`stop` realtime messages. Hold **Shift** (often CC 63 ≥ 64), press **Play**, and check `journalctl -u pi-ambient-synth -f` for `SHIFT+PLAY (MIDI start) → reseed`. Debug: `systemctl edit pi-ambient-synth` → add `ExecStart=.../main.py --debug-midi` temporarily.
+
+11. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
 
 ### One-command verify (audio + engine)
 
@@ -377,6 +383,51 @@ If the error persists, remove a conflicting system install so Python loads `vend
 ```bash
 sudo rm -rf /usr/local/lib/python3.*/dist-packages/waveshare_epd
 ```
+
+## Headphones silent but status page / SC journal look OK
+
+SuperCollider often runs with **JACK ports up but not wired** to `system:playback_*` (the bcm2835 headphone jack). Check:
+
+```bash
+jack_lsp -c | head -20
+# Need: system:playback_1  →  SuperCollider:out_1
+```
+
+Fix immediately:
+
+```bash
+~/pi-ambient-synth/scripts/ensure_jack_playback.sh
+~/pi-ambient-synth/.venv/bin/python ~/pi-ambient-synth/scripts/test_osc.py
+```
+
+Then restart supercollider so the reconnect watchdog is active:
+
+```bash
+sudo systemctl restart supercollider.service
+sleep 20
+~/pi-ambient-synth/scripts/ensure_jack_playback.sh
+```
+
+Also confirm ALSA PCM is not muted: `amixer -c 0 sget PCM` (should show `[on]` and reasonable %).
+
+KeyStep: play notes **above G3 (MIDI note 55+)** for melody; lower keys only move the texture drone.
+
+## `pi-ambient-synth` exits with SIGBUS (`status=7/BUS`)
+
+On some Pi images, **`import numpy` alone can SIGBUS**. Production `pi-ambient-synth.service` runs `main.py --no-eink` with `PI_NO_MIDI=1` and must **not** load `visual_generator` / numpy at import time (MIDI runs in `pi-ambient-synth-midi.service` instead).
+
+Quick check on the Pi:
+
+```bash
+PI_NO_MIDI=1 ~/pi-ambient-synth/.venv/bin/python -c \
+  'import sys; sys.path.insert(0,"~/pi-ambient-synth/src"); import main; print("ok")'
+# or:
+~/pi-ambient-synth/scripts/pi_headless_import_check.sh
+```
+
+If this still SIGBUSes, reinstall numpy for the venv ABI (`pip install --force-reinstall numpy`) or run E2E from the Mac (`./scripts/run_pi_e2e.sh`) after rsyncing the latest `src/`.
+
+Autonomous agents: use `.pi-e2e-status-page.txt` after `./scripts/run_pi_iterate.sh` — journal checks only inspect the **last 8 lines** so old crash loops do not fail a healthy run.
 
 ## E-ink display does not update
 

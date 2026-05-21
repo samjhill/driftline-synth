@@ -51,6 +51,11 @@ scsynth_ready() {
 }
 
 connect_jack_playback() {
+  local root="${PI_AMBIENT_ROOT:-/home/pi/pi-ambient-synth}"
+  if [[ -x "$root/scripts/ensure_jack_playback.sh" ]]; then
+    "$root/scripts/ensure_jack_playback.sh" || true
+    return 0
+  fi
   command -v jack_lsp >/dev/null || return 0
   command -v jack_connect >/dev/null || return 0
   local out1 out2

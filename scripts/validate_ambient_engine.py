@@ -91,11 +91,11 @@ def validate(path: Path) -> list[str]:
             )
         if re.search(r"if\([^)]*&&", line):
             errors.append(
-                f"line {i}: use 'and:' not '&&' inside if() — causes MustBeBooleanError on Pi SC 3.13"
+                f"line {i}: use nested if() not '&&' inside if() — causes MustBeBooleanError on Pi SC 3.13"
             )
         if re.search(r"if\([^)]*\band:\s*\{", line):
             errors.append(
-                f"line {i}: do not use if(x and: {{ ... }}, ...) — and: returns non-Boolean; nest if() instead"
+                f"line {i}: do not use if(x and: {{ ... }}, ...) — nest if() instead"
             )
         if re.search(r"if\([^)]*\|\|", line):
             errors.append(
@@ -138,6 +138,18 @@ def validate(path: Path) -> list[str]:
 
     banned = [
         (r"\?\s*msg\[\d+\]\s*:", "JS-style ternary with msg[...]"),
+        (
+            r"getenv\([^)]+\)\s*\?[^?\n]+:",
+            "C/JS/Python ternary on getenv — use if(getenv(...).notNil, { ... }, { ... })",
+        ),
+        (
+            r"\)\s*\?[^?\n]+:",
+            "ternary (? :) after ) — use if(cond, { true }, { false }) in SC",
+        ),
+        (
+            r"\?\s*[^?\n;/]+:\s*[^/]",
+            "ternary (? :) — SC uses if(cond, { a }, { b }); Elvis is x ? default (no colon)",
+        ),
     ]
     for pat, msg in banned:
         for i, line in enumerate(lines, 1):

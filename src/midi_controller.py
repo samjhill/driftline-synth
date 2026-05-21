@@ -49,6 +49,7 @@ class MidiController:
         self._recall_window = midi.get("favorite_recall_window_ms", 600) / 1000.0
         self._weather_cc = midi.get("weather_cc", 1)
         self._split_note = midi.get("split_note", 55)
+        self._velocity_floor = int(midi.get("velocity_floor", 72))
         self._shift_cc = midi.get("shift_cc", 63)
         self._shift_threshold = midi.get("shift_cc_threshold", 64)
         transport_cc = midi.get("transport_cc", {})
@@ -140,19 +141,32 @@ class MidiController:
             ch = getattr(msg, "channel", 0)
             if not self._channel_ok(ch):
                 return
-            if self._shift_held:
+            if self._shift_held and msg.note in (RESEED_NOTE, FREEZE_NOTE, EVOLVE_NOTE):
                 self._handle_shift_note(msg.note)
                 return
             if msg.note in (RESEED_NOTE, FREEZE_NOTE, EVOLVE_NOTE) and msg.velocity > 100:
                 self._handle_fallback_note(msg.note)
                 return
+            vel = msg.velocity
+            if vel > 0 and vel < self._velocity_floor:
+                logger.info(
+                    "MIDI note_on ch=%s note=%s vel=%s → floored to %s",
+                    ch,
+                    msg.note,
+                    vel,
+                    self._velocity_floor,
+                )
+                vel = self._velocity_floor
+            else:
+                logger.info("MIDI note_on ch=%s note=%s vel=%s", ch, msg.note, vel)
             if self.on_note_on:
-                self.on_note_on(msg.note, msg.velocity, ch)
+                self.on_note_on(msg.note, vel, ch)
         elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
             ch = getattr(msg, "channel", 0)
             if not self._channel_ok(ch):
                 return
             vel = getattr(msg, "velocity", 0)
+            logger.info("MIDI note_off ch=%s note=%s vel=%s", ch, msg.note, vel)
             if self.on_note_off:
                 self.on_note_off(msg.note, vel, ch)
         elif msg.type == "control_change":
@@ -264,7 +278,11 @@ class MidiController:
         """Process pending MIDI (required when PI_MIDI_MAIN_THREAD=1)."""
         if not self._running or self._port is None:
             return
-        for msg in self._port.iter_pending():
+        # Drain the full queue each tick (burst chords / fast arps).
+        while True:
+            msg = self._port.poll()
+            if msg is None:
+                break
             self._handle_message(msg)
 
     def _run(self) -> None:

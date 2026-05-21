@@ -12,6 +12,7 @@ set -euo pipefail
 
 PHASE="${1:-all}"
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
+PY="${INSTALL_DIR}/.venv/bin/python"
 REPO="${GITHUB_REPO:-samjhill/driftline-synth}"
 # Tree to fetch; default main tip (avoids stale PINNED_SHA 404s). Override: GITHUB_REF=abc1234
 REF="${GITHUB_REF:-main}"
@@ -151,6 +152,11 @@ do_audio() {
 do_engine() {
   export PI_AMBIENT_ROOT="$INSTALL_DIR"
   export ENGINE_SMOKE_TIMEOUT="$ENGINE_TIMEOUT"
+  log "validate ambient_engine.scd (static)"
+  if [[ -x "$PY" && -f "$INSTALL_DIR/scripts/validate_ambient_engine.py" ]]; then
+    "$PY" "$INSTALL_DIR/scripts/validate_ambient_engine.py" "$INSTALL_DIR/synth/ambient_engine.scd" \
+      || fail "ambient_engine.scd static validation failed"
+  fi
   if stack_up; then
     export PI_SMOKE_NO_AUDIO=1
   else

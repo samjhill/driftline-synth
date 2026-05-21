@@ -11,12 +11,12 @@ import signal
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from config_loader import install_root, load_config, resolve_data_path
-from eink_display import EInkDisplay
 from logging_setup import setup_logging
 from midi_controller import MidiController, save_midi_status
 from osc_client import OscClient
@@ -26,10 +26,12 @@ from patch_resolve import resolve_current_patch
 from patch_model import Patch
 from midi_clock import MidiClock
 from play_tracker import PlayTracker
-from sigil_export import export_sigil
 from state_store import StateStore
 from pisugar_battery import BatterySnapshot, read_battery_snapshot
-from visual_generator import VisualGenerator
+
+if TYPE_CHECKING:
+    from eink_display import EInkDisplay
+    from visual_generator import VisualGenerator
 
 logger = logging.getLogger("pi_ambient_synth")
 
@@ -52,8 +54,12 @@ class PiAmbientSynth:
         self.patch_gen = PatchGenerator(config)
         self.osc = OscClient(config)
         self._visual: VisualGenerator | None = None
-        self.eink = EInkDisplay(config)
-        self.midi = MidiController(config)
+        self._eink: EInkDisplay | None = None
+        self._no_eink = no_eink or not config.get("eink", {}).get("enabled", True)
+        if os.environ.get("PI_NO_MIDI", "").strip() in ("1", "true", "yes"):
+            self.midi: MidiController | None = None
+        else:
+            self.midi = MidiController(config)
         self.play = PlayTracker()
         self.clock = MidiClock()
         self._sigils_dir = resolve_data_path(
@@ -69,8 +75,18 @@ class PiAmbientSynth:
         self._battery_snapshot: BatterySnapshot | None = None
 
     @property
+    def eink(self) -> EInkDisplay:
+        if self._eink is None:
+            from eink_display import EInkDisplay
+
+            self._eink = EInkDisplay(self.config)
+        return self._eink
+
+    @property
     def visual(self) -> VisualGenerator:
         if self._visual is None:
+            from visual_generator import VisualGenerator
+
             self._visual = VisualGenerator(self.config)
         return self._visual
 
@@ -107,9 +123,21 @@ class PiAmbientSynth:
         )
         return False
 
+    def _master_volume_level(self) -> float:
+        default = float(self.config.get("audio", {}).get("default_volume", 0.65))
+        path = self._marker_dir / "master-volume.json"
+        if not path.is_file():
+            return default
+        try:
+            import json
+
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return max(0.0, min(1.0, float(data.get("level", default))))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return default
+
     def startup(self) -> None:
-        vol = self.config.get("audio", {}).get("default_volume", 0.65)
-        self.osc.set_volume(vol)
+        self.osc.set_volume(self._master_volume_level())
         if self.config.get("eink", {}).get("enabled", True):
             self.eink.init()
             self.eink.show_status(
@@ -143,6 +171,7 @@ class PiAmbientSynth:
                 state="midi-bridge",
             )
         else:
+            assert self.midi is not None
             self._wire_midi()
             if not self.midi.open():
                 logger.warning("MIDI unavailable — OSC/visual still active")
@@ -304,7 +333,9 @@ class PiAmbientSynth:
         morph = max(self._reseed_morph, 7.0)
         self.osc.send_patch(self._patch, morph_seconds=morph)
         self._update_display(self._patch)
-        if self._export_sigil:
+        if self._export_sigil and not self._no_eink:
+            from sigil_export import export_sigil
+
             path = export_sigil(self._patch, self.visual, self._sigils_dir)
             self.osc.tape_grit(0.2, 3.0)
             if self.config.get("eink", {}).get("enabled", True):
@@ -366,8 +397,11 @@ class PiAmbientSynth:
 
     def shutdown(self) -> None:
         self._running = False
-        self.midi.stop()
+        if self.midi is not None:
+            self.midi.stop()
         save_midi_status(self.config, connected=False, port_name=None, listening=False)
+        if self._no_eink or not self.config.get("eink", {}).get("enabled", True):
+            return
         if self.config.get("eink", {}).get("clear_on_shutdown", False):
             self.eink.clear()
         else:
@@ -437,7 +471,7 @@ class PiAmbientSynth:
         logger.info("Pi Ambient Synth running — Ctrl+C to exit")
         try:
             while self._running:
-                if self.midi.is_listening:
+                if self.midi is not None and self.midi.is_listening:
                     self.midi.poll()
                 self._maybe_refresh_battery_display()
                 time.sleep(0.002)
@@ -461,6 +495,8 @@ def main() -> int:
     setup_logging(config.get("app", {}).get("log_level", "INFO"))
 
     if args.generate_visual:
+        from visual_generator import VisualGenerator
+
         gen = PatchGenerator(config)
         patch = gen.generate()
         vis = VisualGenerator(config)

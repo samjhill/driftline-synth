@@ -22,3 +22,6 @@ results.txt
 vendor/wheels/
 vendor/e-Paper-tmp/
 .pi-ssh-credentials
+.pi-e2e-status.json
+.pi-e2e-status-page.txt
+.pi-e2e-api-status.json

@@ -21,10 +21,15 @@ On Linux (or CI), also run:
 
 ## SuperCollider syntax pitfalls (this repo)
 
-- Short-circuit AND: `companionOn and: { ... }` — not `and {`
-- Defaults: `msg[1] ?? 120` — not `msg[1] ? msg[1] : 120`
+- **No C/JS/Python ternary** (`a ? b : c`) — use `if(cond, { b }, { c })`. Elvis defaults are `x ? default` with **no colon**.
+- **No `&&` inside `if(...)`** — nest `if()` blocks (Pi SC 3.13 → MustBeBooleanError).
+- **No `if(x and: { ... }, { ... })`** — `and:` is not a boolean test; nest `if()` instead.
+- Short-circuit AND in expressions: `companionOn and: { ... }` — not `and {`
+- Defaults: `msg[1] ?? 120` or `msg[1] ? 120` — not `msg[1] ? msg[1] : 120`
 - Close `if(s.serverRunning, { ... });` with `});` — not `};` alone before the keepalive fork
 - Never `N.wait` on the main boot path — use `s.sync` and `s.serverRunning` (not `.booted` — SC 3.14+ only)
+
+`./scripts/run_pi_e2e.sh` runs static validation on Mac and Pi, engine smoke, and journal checks for `syntax error` / `Engine synths started`.
 
 ## Deploy note
 

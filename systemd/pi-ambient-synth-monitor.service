@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 User=pi
+Environment=PI_MONITOR_SKIP_SIGIL=1
 SupplementaryGroups=adm
 WorkingDirectory=/home/pi/pi-ambient-synth
 ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/src/monitor_server.py

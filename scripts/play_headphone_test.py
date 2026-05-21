@@ -17,7 +17,7 @@ def _write_chill_wav(path: Path, *, sample_rate: int, duration: float) -> None:
     n = int(sample_rate * duration)
     f1, f2 = 196.0, 293.66  # G3 + D4 — calm open fifth
     pan_hz = 0.11  # slow L↔R (~9 s per full cycle)
-    amp = 0.22
+    amp = 0.75
 
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(2)

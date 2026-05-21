@@ -17,6 +17,10 @@ for n in $(seq 1 "$MAX"); do
     echo "==> Iteration succeeded on attempt $n"
     exit 0
   fi
+  if [[ -f "$ROOT/.pi-e2e-status-page.txt" ]]; then
+    echo "==> last status page snapshot:"
+    tail -n 40 "$ROOT/.pi-e2e-status-page.txt" || true
+  fi
   echo "==> attempt $n failed; waiting 8s..."
   sleep 8
 done

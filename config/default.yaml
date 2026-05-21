@@ -11,6 +11,10 @@ monitor:
   port: 8080
   journal_lines: 22
   log_tail_lines: 35
+  # Pi headless: numpy sigil render can SIGBUS — use placeholder PNG
+  skip_sigil: true
+  # No periodic page/API reload (0 = off)
+  auto_refresh_seconds: 0
 
 midi:
   preferred_input_keywords:
@@ -28,6 +32,8 @@ midi:
   weather_cc: 1
   favorite_recall_window_ms: 600
   split_note: 55
+  # KeyStep MPE often sends ch 15 (mido ch=14) with velocity < 20 — floor before OSC.
+  velocity_floor: 72
   sigils_dir: "./state/sigils"
   export_sigil_on_reseed: true
 
@@ -37,7 +43,7 @@ osc:
   python_listen_port: 57121
 
 audio:
-  default_volume: 0.65
+  default_volume: 0.85
   patch_morph_seconds: 6.0
 
 patch:

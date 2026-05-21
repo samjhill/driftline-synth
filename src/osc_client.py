@@ -49,10 +49,10 @@ class OscClient:
         logger.info("OSC client → %s:%s", self.host, self.port)
 
     def note_on(self, note: int, velocity: int = 100) -> None:
-        self._client.send_message("/pi_synth/note_on", [note, velocity])
+        self._client.send_message("/pi_synth/note_on", [int(note), int(velocity)])
 
     def note_off(self, note: int, velocity: int = 0) -> None:
-        self._client.send_message("/pi_synth/note_off", [note, velocity])
+        self._client.send_message("/pi_synth/note_off", [int(note), int(velocity)])
 
     def set_param(self, name: str, value: float | int | str | bool) -> None:
         if isinstance(value, bool):

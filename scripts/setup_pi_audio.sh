@@ -13,6 +13,14 @@ if command -v raspi-config &>/dev/null; then
   sudo raspi-config nonint do_audio 1 2>/dev/null || true
 fi
 
+# Pi 3 analog jack: louder/cleaner PWM output (see Raspberry Pi config.txt docs).
+for cfg in /boot/firmware/config.txt /boot/config.txt; do
+  if [[ -f "$cfg" ]] && ! grep -q '^audio_pwm_mode=' "$cfg" 2>/dev/null; then
+    echo "    Adding audio_pwm_mode=2 to $cfg (reboot once for full effect)"
+    echo "audio_pwm_mode=2" | sudo tee -a "$cfg" >/dev/null
+  fi
+done
+
 # Headless Pi: PulseAudio/PipeWire "default" often fails with error -524.
 for svc in pipewire pipewire-pulse wireplumber pulseaudio; do
   if systemctl is-active "$svc" &>/dev/null; then

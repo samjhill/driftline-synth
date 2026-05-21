@@ -17,15 +17,23 @@ export JACK_NO_START_SERVER="${JACK_NO_START_SERVER:-1}"
 # ALSA device name from `aplay -L` (e.g. plughw:0,0). Empty makes scsynth try JACK.
 export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 export SC_HEADLESS_ALSA="${SC_HEADLESS_ALSA:-1}"
-# Orphan scsynth from a prior crash/restart can hold ALSA while sclang has no synths.
+# Orphan scsynth from a prior crash/restart can leave sclang pointing at dead Nodes (silent OSC).
 rm -f "$READY_MARKER" 2>/dev/null || true
-# ExecStartPre clears jackd/scsynth; avoid racing a second teardown here.
-if ! pgrep -x jackd >/dev/null || ! pgrep -x scsynth >/dev/null; then
-  "$ROOT/scripts/start_scsynth_alsa.sh" || exit 1
-else
-  export SC_JACK_ALREADY=1
-  "$ROOT/scripts/start_scsynth_alsa.sh" || exit 1
-fi
+pkill -x sclang 2>/dev/null || true
+sleep 0.5
+"$ROOT/scripts/start_scsynth_alsa.sh" || exit 1
+
+# SC_JACK_DEFAULT_OUTPUTS often does not stick after sclang attaches; reconnect on a schedule.
+(
+  for delay in 8 15 22 30 40 55 75; do
+    sleep "$delay"
+    [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
+  done
+  while true; do
+    sleep 25
+    [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
+  done
+) &
 
 # Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
 # Line-buffered stdout so systemd journal shows Booting/scsynth lines promptly.

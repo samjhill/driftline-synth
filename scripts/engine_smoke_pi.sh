@@ -81,7 +81,7 @@ if [[ ! -f "$SCD" ]]; then
   exit 1
 fi
 
-ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-jackOutputs}"
+ENGINE_MARK="${ENGINE_BUILD_MARK:-sc313-audibleFx}"
 if ! grep -q "$ENGINE_MARK" "$SCD"; then
   found="$(grep -o 'build sc313-[^"]*' "$SCD" | head -1 || true)"
   echo "ERROR: engine stale — want $ENGINE_MARK, file has: ${found:-<no sc313 marker>}" >&2
@@ -105,7 +105,7 @@ set -e
 echo "==> exit $status — highlights:"
 grep -E 'bindPort|langPort|/done|status.reply|scsynth connected|Attaching|ENGINE_TEST|ERROR|Boolean|syntax|JackTemporary|jackd ready|scsynth ready|WARN:' "$LOG" || true
 
-if grep -qE 'ERROR:|MustBeBoolean|syntax error|not understood|POPen|Command line parse failed' "$LOG"; then
+if grep -qE 'ERROR:|MustBeBoolean|syntax error|unexpected.*expecting|not understood|POPen|Command line parse failed' "$LOG"; then
   echo "==> last 25 lines:" >&2
   tail -25 "$LOG" >&2
   exit 1

@@ -33,36 +33,50 @@ log() {
   echo "$(date -Iseconds) [pi-e2e] $*"
 }
 
+check_sc_source() {
+  [[ -x "$PY" ]] || fail "venv python missing"
+  "$PY" "$INSTALL_DIR/scripts/validate_ambient_engine.py" "$INSTALL_DIR/synth/ambient_engine.scd" \
+    || fail "ambient_engine.scd failed static SC validation"
+  log "ambient_engine.scd static validation OK"
+}
+
 check_supercollider() {
   systemctl is-active --quiet supercollider.service || fail "supercollider not active"
   [[ -f "$MARKER_DIR/sc-engine-ready" ]] || fail "sc-engine-ready missing"
   local j
-  j="$(journalctl -u supercollider -n 30 --no-pager --since "5 min ago" 2>/dev/null || true)"
+  j="$(journalctl -u supercollider -n 40 --no-pager --since "10 min ago" 2>/dev/null || true)"
+  echo "$j" | grep -qiE 'syntax error|Command line parse failed|unexpected.*expecting' \
+    && fail "sclang compile/parse error in journal (fix ambient_engine.scd)"
+  echo "$j" | grep -q 'Engine synths started' \
+    || fail "SC engine synths never started (journal missing 'Engine synths started')"
   echo "$j" | grep -q 'listening on OSC port 57120' \
     || fail "sclang not listening on 57120"
   echo "$j" | grep -qi 'linearRamp.*not understood' \
     && fail "SC still hitting linearRamp errors"
-  echo "$j" | grep -q 'build sc313-jackOutputs\|build sc313-noLinearRamp\|build sc313-oscPaths' \
+  echo "$j" | grep -q 'build sc313-audibleFx\|build sc313-jackOutputs\|build sc313-noLinearRamp\|build sc313-oscPaths' \
     || fail "engine build marker missing (stale ambient_engine.scd?)"
+}
+
+check_audible() {
+  [[ -x "$INSTALL_DIR/scripts/verify_audible_pi.sh" ]] || fail "verify_audible_pi.sh missing"
+  chmod +x "$INSTALL_DIR/scripts/verify_audible_pi.sh" 2>/dev/null || true
+  PI_SKIP_APLAY_TEST="${PI_SKIP_APLAY_TEST:-0}" "$INSTALL_DIR/scripts/verify_audible_pi.sh" \
+    || fail "audible verify failed (headphones silent?)"
+  log "audible verify OK"
 }
 
 check_jack_playback() {
   command -v jack_lsp >/dev/null || fail "jack_lsp missing"
-  local links
-  links="$(jack_lsp -l 2>/dev/null || true)"
-  if echo "$links" | grep -qE 'SuperCollider:out_1.*system:playback_1|SuperCollider:out_1 -> system:playback_1'; then
-    log "JACK: SuperCollider:out_1 → system:playback_1"
+  if [[ -x "$INSTALL_DIR/scripts/ensure_jack_playback.sh" ]]; then
+    "$INSTALL_DIR/scripts/ensure_jack_playback.sh" || fail "ensure_jack_playback failed"
+  fi
+  local conn
+  conn="$(jack_lsp -c 2>/dev/null || true)"
+  if echo "$conn" | awk '/^system:playback_1$/{getline; if(/SuperCollider:out_1/) found=1} END{exit !found}'; then
+    log "JACK: SuperCollider:out_1 → system:playback_1 (verified)"
     return 0
   fi
-  # scsynth may auto-connect via SC_JACK_DEFAULT_OUTPUTS even if -l format differs
-  if pgrep -x scsynth >/dev/null && pgrep -x jackd >/dev/null; then
-    log "WARN: jack_lsp -l missing explicit link (checking ports exist)"
-    jack_lsp 2>/dev/null | grep -q 'SuperCollider:out_1' \
-      && jack_lsp 2>/dev/null | grep -q 'system:playback_1' \
-      || fail "SuperCollider or system playback ports missing"
-    return 0
-  fi
-  fail "JACK playback path not verified"
+  fail "JACK playback not linked (run ensure_jack_playback.sh — headphones silent without this)"
 }
 
 check_osc_beep() {
@@ -109,10 +123,25 @@ check_midi_paths() {
   "$PY" "$INSTALL_DIR/scripts/simulate_midi_e2e.py" || fail "simulate_midi_e2e.py failed"
 }
 
+check_status_page() {
+  local phase="$1"
+  [[ -x "$PY" ]] || fail "venv python missing"
+  export MARKER_DIR
+  "$PY" "$INSTALL_DIR/scripts/assert_monitor_status.py" --phase "$phase" \
+    || fail "status page assertions failed (--phase $phase)"
+}
+
 log "=== pi e2e verify ==="
+check_sc_source
+sudo systemctl reset-failed pi-ambient-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
+sleep 3
+check_status_page wait
 check_supercollider
 check_jack_playback
 check_osc_beep
+check_status_page post-osc
 check_synth_service || true
 check_midi_paths
+check_status_page final
+check_audible
 pass

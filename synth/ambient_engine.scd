@@ -15,7 +15,7 @@ NetAddr.localAddr.port = port;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
-masterVol = 0.65;
+masterVol = 1.0;
 evolveEnabled = false;
 textureRoot = 48;
 holdLatch = false;
@@ -65,7 +65,7 @@ patchParams[\root_note] = 48;
 
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackOutputs)".postln;
+"Pi Ambient Synth engine script loading (build sc313-audibleFx)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 scPort = 57110;
 if(getenv("SC_SYNTH_PORT").notNil, {
@@ -148,8 +148,10 @@ if(bootOk != true, {
 	// Pi SC 3.13: Bus.linearRamp is missing — set target immediately.
 	var busKey = ("morph_" ++ key).asSymbol;
 	patchParams[key.asSymbol] = target;
-	if(~morphBuses.notNil and: { ~morphBuses[busKey].notNil }, {
-		~morphBuses[busKey].set(target);
+	if(~morphBuses.notNil, {
+		if(~morphBuses[busKey].notNil, {
+			~morphBuses[busKey].set(target);
+		});
 	});
 };
 
@@ -196,8 +198,9 @@ if(bootOk != true, {
 	};
 };
 
+// Bus 8 = engine submix; bus 0 = hardware (after piLimiter).
 SynthDef(\piAmbientVoice, {
-	|out=0, freq=440, amp=0.3, gate=1, vel=100,
+	|out=8, freq=440, amp=0.3, gate=1, vel=100,
 	oscBlend=0.5, subLevel=0.15, noiseLevel=0.05,
 	cutoff=1400, res=0.2, atk=0.05, dec=0.8, sus=0.6, rel=2.5,
 	drift=0.008, lfoRate=0.08, lfoDepth=0.08, width=0.7, bright=0.6,
@@ -224,7 +227,7 @@ SynthDef(\piAmbientVoice, {
 }).add;
 
 SynthDef(\piTextureDrone, {
-	|out=0, root=48, density=0.5, noise=0.05, rev=0.45, duck=1.0, shimmer=0.0, amp=1.0|
+	|out=8, root=48, density=0.5, noise=0.05, rev=0.45, duck=1.0, shimmer=0.0, amp=1.0|
 	var freq, sig, fifth, oct, pan;
 	freq = root.midicps;
 	fifth = (root + 7).midicps;
@@ -236,22 +239,27 @@ SynthDef(\piTextureDrone, {
 		LPF.ar(PinkNoise.ar(noise * 0.04), 800),
 		SinOsc.ar(oct * 2, 0, shimmer * 0.03)
 	]);
-	sig = sig * LFNoise1.kr(0.02).range(0.4, 1.0) * duck * amp;
+	sig = sig * LFNoise1.kr(0.02).range(0.55, 1.0) * duck * amp;
 	pan = SinOsc.kr(0.03 + (SinOsc.kr(0.01) * 0.02)).range(-0.55, 0.55);
 	Out.ar(out, Pan2.ar(sig, pan));
-	Out.ar(4, sig * rev * 0.6);
+	Out.ar(4, sig * rev * 0.65);
 }).add;
 
-SynthDef(\piDelayFx, { |inBus=6, out=0, mix=0.25, dt=0.5|
-	var sig = In.ar(inBus, 2);
-	sig = CombC.ar(sig, 2.0, dt, 4) * mix + sig * (1 - mix);
-	ReplaceOut.ar(out, LeakDC.ar(sig));
+SynthDef(\piDelayFx, { |inBus=6, out=8, mix=0.25, dt=0.5|
+	var wet = In.ar(inBus, 2);
+	wet = CombC.ar(wet, 2.0, dt, 4);
+	Out.ar(out, LeakDC.ar(wet * mix));
 }).add;
 
-SynthDef(\piReverbFx, { |inBus=4, out=0, mix=0.45, room=0.8|
-	var sig = In.ar(inBus, 2);
-	sig = FreeVerb.ar(sig, mix, room, 0.85);
-	ReplaceOut.ar(out, LeakDC.ar(sig * 0.95));
+SynthDef(\piReverbFx, { |inBus=4, out=8, mix=0.45, room=0.8|
+	var wet = In.ar(inBus, 2);
+	wet = FreeVerb.ar(wet, 1.0, room, 0.85);
+	Out.ar(out, LeakDC.ar(wet * mix));
+}).add;
+
+SynthDef(\piStartupChime, { |out=8, freq=523.25, amp=0.55, gate=1, pan=0|
+	var sig = SinOsc.ar(freq) * EnvGen.kr(Env.perc(0.008, 0.38, 1, -4), gate, doneAction: 2);
+	Out.ar(out, Pan2.ar(sig * amp, pan));
 }).add;
 
 SynthDef(\piCompanion, {
@@ -268,16 +276,43 @@ SynthDef(\piCompanion, {
 	Out.ar(4, sig * env * density);
 }).add;
 
-SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
+SynthDef(\piLimiter, { |in=8, out=0, level=0.9|
 	var sig = In.ar(in, 2);
+	// bcm2835 headphone jack is effectively mono — sum L/R so neither channel is silent.
+	sig = Mix(sig) ! 2;
 	sig = (sig * (1 / level)).tanh * level;
-	ReplaceOut.ar(out, LeakDC.ar(sig));
+	// Out.ar (not ReplaceOut) so keyboard piRawTone after limiter is not cleared on bus 0.
+	Out.ar(out, LeakDC.ar(sig));
+}).add;
+
+SynthDef(\piRawTone, { |out=0, freq=440, amp=0.7, dur=0.5|
+	var sig = SinOsc.ar(freq) * EnvGen.kr(Env.perc(0.005, dur, 1, -4), doneAction: 2);
+	Out.ar(out, (sig ! 2) * amp);
 }).add;
 
 ~textureAmp = { |vol|
-	if(textureSynth.notNil, {
-		textureSynth.set(\amp, (vol ? masterVol) * 1.35);
+	if(~engineNodeRunning.(textureSynth), {
+		textureSynth.set(\amp, (vol ? masterVol) * 1.6);
 	});
+};
+
+~playStartupChime = {
+	if(limiterSynth.isNil, {
+		"startup chime skipped (engine not ready)".postln;
+		^this;
+	});
+	"Pi Ambient Synth startup chime".postln;
+	[
+		[523.25, 0, 0.52],
+		[659.25, 0.08, 0.48],
+		[783.99, 0.16, 0.44],
+		[1046.5, 0.24, 0.5]
+	].do { |row|
+		var f = row[0], waitT = row[1], a = row[2];
+		Synth.before(limiterSynth, \piStartupChime, [\freq, f, \amp, a, \gate, 1, \pan, -0.25]);
+		Synth.before(limiterSynth, \piStartupChime, [\freq, f * 1.002, \amp, a * 0.85, \gate, 1, \pan, 0.25]);
+		waitT.wait;
+	};
 };
 
 ~voices = IdentityDictionary.new;
@@ -286,21 +321,36 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 ~setDuck = {
 		var target = if(arpActive, 0.55, 1.0);
 		duckLevel = target;
-		if(textureSynth.notNil, { textureSynth.set(\duck, target) });
+		if(~engineNodeRunning.(textureSynth), { textureSynth.set(\duck, target) });
+	};
+
+~playKeyboardAudible = { |freq, amp=0.95, dur=0.35|
+		var a = amp.clip(0.65, 1.0);
+		~ensureEngine.();
+		// Tail of root group so tone is last in chain; duplicate to hardware bus 0.
+		if(limiterSynth.notNil, {
+			Synth.after(limiterSynth, \piRawTone, [\freq, freq, \amp, a, \dur, dur, \out, 0]);
+		}, {
+			Synth.tail(s, \piRawTone, [\freq, freq, \amp, a, \dur, dur, \out, 0]);
+		});
 	};
 
 ~playNote = { |note, vel=100|
 		var freq = note.midicps;
-		var amp = vel.linlin(0, 127, 0.18, 0.42) * masterVol;
+		var v = vel.clip(48, 127);
+		var amp = v.linlin(48, 127, 0.55, 1.0) * masterVol.max(0.85);
+		var rel = (patchParams[\release] ? 1.2).clip(0.25, 2.5);
+		("playNote: midi % vel % (used %) amp %".format(note, vel, v, amp.round(0.001))).postln;
+		~playKeyboardAudible.(freq, amp, rel);
 		~noteActivity = (~noteActivity + 1).max(0);
-		if(textureSynth.notNil, { textureSynth.set(\duck, 0.42) });
+		if(~engineNodeRunning.(textureSynth), { textureSynth.set(\duck, 0.42) });
 		if(limiterSynth.isNil, {
 			"playNote: engine not initialized (no limiterSynth)".postln;
 			^this;
 		});
 		if(~voices[note].notNil, { ~voices[note].free });
 		~voices[note] = Synth.before(limiterSynth, \piAmbientVoice, [
-			\freq, freq, \amp, amp, \gate, 1, \vel, vel,
+			\freq, freq, \amp, amp, \gate, 1, \vel, v,
 			\oscBlend, patchParams[\oscillator_blend] ? 0.5,
 			\subLevel, patchParams[\sub_level] ? 0.15,
 			\noiseLevel, patchParams[\noise_level] ? 0.05,
@@ -358,28 +408,87 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		};
 };
 
-if(bootOk == true, {
-	~morphBuses = IdentityDictionary.new;
-	synthGroup = Group.tail(s);
+~engineNodeRunning = { |node|
+	if(node.isNil, { ^false });
+	try { ^node.isRunning } { ^false };
+};
 
-	Synth.tail(synthGroup, \piDelayFx, [\inBus, 6, \out, 0, \mix, 0.2, \dt, 0.5]);
-	Synth.tail(synthGroup, \piReverbFx, [\inBus, 4, \out, 0, \mix, 0.45, \room, 0.8]);
-	limiterSynth = Synth.tail(synthGroup, \piLimiter, [\in, 0, \out, 0, \level, 0.85]);
-	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5, \amp, masterVol * 1.35]);
-	"Engine synths started (texture drone + FX chain)".postln;
-	if(useAlsaSynth, {
-		[
-			"jack_connect SuperCollider:out_1 system:playback_1 2>/dev/null || true",
-			"jack_connect SuperCollider:out_2 system:playback_2 2>/dev/null || true",
-		].do { |cmd| cmd.unixCmd };
-		"jack playback connect attempted (SuperCollider:out → system:playback)".postln;
+~initEngineSynths = {
+	var g;
+	~voices.do(_.free);
+	~voices.clear;
+	if(textureSynth.notNil, {
+		try { textureSynth.free } {};
+		textureSynth = nil;
 	});
+	if(limiterSynth.notNil, {
+		try { limiterSynth.free } {};
+		limiterSynth = nil;
+	});
+	if(synthGroup.notNil, {
+		try { synthGroup.freeAll } {};
+	});
+	s.sync;
+	~morphBuses = IdentityDictionary.new;
+	g = Group.tail(s);
+	synthGroup = g;
+	textureSynth = Synth.tail(g, \piTextureDrone, [\root, 48, \density, 0.55, \amp, masterVol * 1.6]);
+	Synth.tail(g, \piReverbFx, [\inBus, 4, \out, 0, \mix, 0.42, \room, 0.8]);
+	Synth.tail(g, \piDelayFx, [\inBus, 6, \out, 0, \mix, 0.18, \dt, 0.5]);
+	limiterSynth = Synth.tail(g, \piLimiter, [\in, 8, \out, 0, \level, 0.92]);
+	s.sync;
+	"Engine synths started (texture drone + FX chain)".postln;
+};
+
+~engineHealthy = {
+	~engineNodeRunning.(limiterSynth) and: { ~engineNodeRunning.(textureSynth) };
+};
+
+~ensureEngine = {
+	if(~engineHealthy.value.not, {
+		"ensureEngine: rebuilding (engine nodes missing or not running)".postln;
+		~initEngineSynths.();
+	});
+};
+
+if(bootOk == true, {
+	~initEngineSynths.();
+	fork {
+		1.2.wait;
+		if(useAlsaSynth, {
+			var envRoot = getenv("PI_AMBIENT_ROOT");
+			var root = if(envRoot.notNil, {
+				if(envRoot.size > 0, { envRoot }, { "/home/pi/pi-ambient-synth" })
+			}, { "/home/pi/pi-ambient-synth" });
+			5.do { |i|
+				if(0 < i, { 0.6.wait });
+				(root + "/scripts/ensure_jack_playback.sh 2>/dev/null || true").unixCmd;
+			};
+		});
+		~playStartupChime.();
+	};
+	fork {
+		loop {
+			15.wait;
+			~ensureEngine.();
+			if(useAlsaSynth, {
+				var envRoot = getenv("PI_AMBIENT_ROOT");
+				var root = if(envRoot.notNil, {
+					if(envRoot.size > 0, { envRoot }, { "/home/pi/pi-ambient-synth" })
+				}, { "/home/pi/pi-ambient-synth" });
+				(root + "/scripts/ensure_jack_playback.sh 2>/dev/null || true").unixCmd;
+			});
+		};
+	};
 }, {
 	"WARN: scsynth not running — OSC registered but notes will not sound".postln;
 });
 
 OSCdef(\piNoteOn, { |msg|
-		~playNote.(msg[1].asInteger, msg[2] ? 100);
+		var note = msg[1].asInteger;
+		var vel = if(msg[2].notNil, { msg[2].asInteger }, { 100 });
+		("OSC note_on % vel %".format(note, vel)).postln;
+		~playNote.(note, vel);
 	}, "/pi_synth/note_on");
 
 	OSCdef(\piNoteOff, { |msg|
@@ -509,13 +618,14 @@ OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
 	var amp = msg[2] ?? 0.85;
 	"pi_test_beep OSC received % Hz".format(freq).postln;
+	~playKeyboardAudible.(freq, amp.clip(0.5, 1.0), 0.45);
 	if(limiterSynth.isNil, {
 		"pi_test_beep: engine not initialized (no limiterSynth)".postln;
 	}, {
-		Synth(\piAmbientVoice, [
+		Synth.before(limiterSynth, \piAmbientVoice, [
 			\freq, freq, \amp, amp, \gate, 1, \vel, 110,
-			\atk, 0.01, \dec, 0.1, \sus, 0.8, \rel, 0.4,
-			\cutoff, 4000, \delayMix, 0, \revMix, 0
+			\atk, 0.01, \dec, 0.12, \sus, 0.85, \rel, 0.35,
+			\cutoff, 5200, \delayMix, 0.08, \revMix, 0.12
 		]);
 		"pi_test_beep % Hz".format(freq).postln;
 	});
@@ -537,7 +647,7 @@ if(engineTest, {
 		"Pi Ambient Synth ENGINE_TEST failed: scsynth not connected".postln;
 		0.exit;
 	});
-	NetAddr("127.0.0.1", port).sendMsg("/pi_synth/test_beep", 440, 0.7);
+	NetAddr("127.0.0.1", port).sendMsg("/pi_synth/test_beep", 440, 0.95);
 	0.5.wait;
 	"Pi Ambient Synth ENGINE_TEST ok".postln;
 	0.exit;
