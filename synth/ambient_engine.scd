@@ -3,7 +3,22 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest;
+var port, useAlsaSynth, engineTest, syncServerInPlace;
+
+// Pi SC 3.13: s.sync on main thread → "yield outside Routine"; sync inside fork + Condition.hang.
+syncServerInPlace = { |srv, setNoBoot|
+	var done = Condition.new;
+	fork {
+		if(setNoBoot == true, {
+			if(srv.options.respondsTo(\booting), {
+				srv.options.booting = false;
+			});
+		});
+		srv.sync;
+		done.signal;
+	};
+	done.hang;
+};
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -64,11 +79,7 @@ s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
 	// scsynth started by scripts/start_scsynth_alsa.sh (jackd + JACK client)
-	// Pi SC 3.13 has no ServerOptions.booting — do not call s.boot here.
-	if(s.options.respondsTo(\booting), {
-		s.options.booting = false;
-	});
-	s.sync;
+	syncServerInPlace.(s, true);
 	if(s.serverRunning == true, {
 		("scsynth connected (external jackd) — device: %, rate: %".format(
 			~audioDevice, s.serverSampleRate
@@ -80,11 +91,11 @@ if(useAlsaSynth, {
 	Server.killAll;
 	if(s.serverRunning == true, {
 		s.quit;
-		s.sync;
+		syncServerInPlace.(s, false);
 	});
 	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 	s.boot(~audioDevice);
-	s.sync;
+	syncServerInPlace.(s, false);
 	if(s.serverRunning == true, {
 		("scsynth running — device: %, rate: %, out ch: %".format(
 			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
