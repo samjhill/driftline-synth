@@ -14,7 +14,7 @@ export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-}"
 # Prevent scsynth from spawning JACK to grab hw:0 on headless Pi.
 export JACK_NO_AUDIO_RESERVATION="${JACK_NO_AUDIO_RESERVATION:-1}"
 # ALSA device name from `aplay -L` (e.g. plughw:0,0). Empty makes scsynth try JACK.
-export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-plughw:0,0}"
+export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-hw:0,0}"
 
 # Orphan scsynth from a prior crash/restart can hold ALSA while sclang has no synths.
 rm -f "$READY_MARKER" 2>/dev/null || true

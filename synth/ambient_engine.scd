@@ -41,7 +41,8 @@ patchParams[\root_note] = 48;
 ~configureServerAudio = { |srv|
 	var opt = srv.options;
 	var env = getenv("SC_AUDIO_DEVICE");
-	var dev = if(env.notNil && { env.size > 0 }, { env }, { "plughw:0,0" });
+	// hw:0,0 — plughw:0,0 can make JACK report client name '0,0' and break sclang↔scsynth link.
+	var dev = if(env.notNil && { env.size > 0 }, { env }, { "hw:0,0" });
 	opt.numOutputBusChannels = 2;
 	opt.numInputBusChannels = 2;
 	// Pi scsynth+JACK often locks to 48000; match to avoid silent or wrong-rate output.
@@ -52,23 +53,41 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build sc313-waitForBoot)".postln;
+"Pi Ambient Synth engine script loading (build sc313-bootGate)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 Server.killAll;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-// Do not use N.wait on the main thread — use waitForBoot after boot (blocks until scsynth is up).
-if(s.serverRunning, { s.quit });
-"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
-s.boot(~audioDevice);
-s.waitForBoot;
-if(s.serverRunning.not, {
-	"ERROR: scsynth failed to start — check: which scsynth, aplay -l, SC_AUDIO_DEVICE".postln;
-}, {
-	("scsynth running — device: %, rate: %, out ch: %".format(
-		s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
-	)).postln;
-});
+// waitForBoot can hang forever when scsynth is up but sclang never sees serverRunning (Pi JACK/ALSA).
+var bootGate = Condition.new;
+fork {
+	var timedOut = false;
+	fork {
+		50.wait;
+		timedOut = true;
+		"WARN: boot gate timeout (50s) — continuing".postln;
+		bootGate.signal;
+	};
+	if(s.serverRunning, { s.quit; 2.wait });
+	if(s.serverRunning.not, {
+		"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
+		s.boot(~audioDevice);
+	});
+	var tries = 0;
+	while { { s.serverRunning.not }.and({ tries < 300 }).and({ timedOut.not }) } {
+		0.1.wait;
+		tries = tries + 1;
+	};
+	if(s.serverRunning, {
+		("scsynth running — device: %, rate: %, out ch: %".format(
+			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
+		)).postln;
+	}, {
+		"ERROR: sclang not connected to scsynth — check: pgrep scsynth, SC_AUDIO_DEVICE=hw:0,0".postln;
+	});
+	bootGate.signal;
+};
+bootGate.wait;
 
 ~setParam = { |key, val|
 	patchParams[key.asSymbol] = val;

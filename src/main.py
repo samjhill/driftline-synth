@@ -86,7 +86,7 @@ class PiAmbientSynth:
             self.state_store.save_current(patch)
         return patch
 
-    def _wait_for_sc_engine(self, timeout: float = 45.0) -> bool:
+    def _wait_for_sc_engine(self, timeout: float = 55.0) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self._sc_ready_marker.is_file():
@@ -113,6 +113,13 @@ class PiAmbientSynth:
                 battery=self._battery_for_display(),
             )
         self._patch = self._resolve_patch()
+        save_midi_status(
+            self.config,
+            connected=False,
+            port_name=None,
+            listening=False,
+            state="starting",
+        )
         self._wait_for_sc_engine()
         self.osc.send_patch(self._patch)
         self._update_display(self._patch)
@@ -127,6 +134,7 @@ class PiAmbientSynth:
                 connected=True,
                 port_name=self.midi.port_name,
                 listening=True,
+                state="running",
             )
 
     def _wire_midi(self) -> None:

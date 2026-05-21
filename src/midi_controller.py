@@ -324,17 +324,24 @@ def save_midi_status(
     connected: bool,
     port_name: str | None,
     listening: bool,
+    state: str | None = None,
 ) -> Path | None:
     """Persist synth MIDI open state for the LAN monitor (separate process)."""
     marker_dir = Path(
         config.get("app", {}).get("marker_dir", "/var/lib/pi-ambient-synth")
     )
-    payload = {
+    payload: dict[str, Any] = {
         "connected": connected,
         "port_name": port_name,
         "listening": listening,
         "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+    if state:
+        payload["state"] = state
+    elif connected and listening:
+        payload["state"] = "running"
+    elif connected is False and listening is False:
+        payload["state"] = "stopped"
     try:
         marker_dir.mkdir(parents=True, exist_ok=True)
         path = marker_dir / "midi-status.json"
@@ -373,6 +380,10 @@ def _midi_status_label(
     if synth and synth.get("listening"):
         port = synth.get("port_name") or snap.get("selected_port") or "MIDI"
         return f"Connected — {port}", True
+    if synth and synth.get("state") in ("stopped", "starting"):
+        if snap.get("preferred_found") or snap.get("selected_port"):
+            port = snap.get("selected_port") or "?"
+            return f"Detected — {port} (synth starting)", None
     if synth is not None and synth.get("connected") is False:
         if snap.get("preferred_found") or snap.get("selected_port"):
             port = snap.get("selected_port") or "?"

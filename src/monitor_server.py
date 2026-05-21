@@ -238,6 +238,13 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
             journal_errors[key] = err
         status_snippets[key] = _systemctl_status_tail(unit, 8)
 
+    sc_ready_path = MARKER_DIR / "sc-engine-ready"
+    sc_engine_ready = (
+        sc_ready_path.read_text(encoding="utf-8").strip()
+        if sc_ready_path.is_file()
+        else None
+    )
+
     try:
         midi = midi_status_summary(config)
     except Exception as e:
@@ -261,6 +268,7 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
         "patch_summary": patch.summary() if patch else None,
         "deploy_sha": deploy_sha,
         "deploy_sha_source": deploy_sha_source,
+        "sc_engine_ready": sc_engine_ready,
         "deploy_log_tail": _tail_file(DEPLOY_LOG, log_tail_lines),
         "eink_log_path": str(_resolve_eink_log()),
         "eink_log_tail": _tail_file(_resolve_eink_log(), log_tail_lines),
@@ -441,6 +449,7 @@ def _html_page(status: dict[str, Any]) -> str:
     {row("MIDI inputs", midi_inputs)}
     {row("Current patch", patch_sum)}
     {row("Deploy SHA", sha)}
+    {row("SC engine", status.get("sc_engine_ready") or "not ready (no /var/lib/pi-ambient-synth/sc-engine-ready)")}
     {bat_row}
     {net_row}
     {svc_rows}
