@@ -23,12 +23,63 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
   fi
 fi
 
+if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
+  && grep -q 'AUDIO_MODE=flues' /etc/pi-ambient-synth/audio-mode.conf 2>/dev/null; then
+  log "audio-mode=flues — Flues-Synth + MIDI bridge"
+  if [[ -x "$INSTALL_DIR/scripts/install_flues_synth.sh" ]]; then
+    INSTALL_DIR="$INSTALL_DIR" "$INSTALL_DIR/scripts/install_flues_synth.sh" || true
+  fi
+  sudo systemctl stop pi-ambient-synth-deploy.timer pi-ambient-synth-midi.service \
+    pi-ambient-synth.service supercollider.service pi-ambient-alsa-drone.service pi-flues-synth.service 2>/dev/null || true
+  pkill -x sclang 2>/dev/null || true
+  free_alsa
+  sleep 1.5
+  install_flues_systemd_units "$INSTALL_DIR"
+  sudo systemctl reset-failed pi-flues-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
+  rm -f "$READY" 2>/dev/null || true
+  echo "flues" | sudo tee "$MARKER_DIR/audio-backend.txt" >/dev/null
+
+  log "start MIDI bridge (KeyStep) before Flues"
+  sudo systemctl start pi-ambient-synth-midi.service
+  sleep 2
+  log "start pi-flues-synth"
+  if [[ ! -x "$INSTALL_DIR/bin/flues-synth" ]]; then
+    echo "ERROR: $INSTALL_DIR/bin/flues-synth missing — run install_flues_synth.sh on Pi" >&2
+    exit 1
+  fi
+  sudo systemctl start pi-flues-synth.service
+  flues_ok=0
+  for _ in $(seq 1 25); do
+    if systemctl is-active --quiet pi-flues-synth.service && pgrep -x flues-synth >/dev/null; then
+      flues_ok=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$flues_ok" -ne 1 ]]; then
+    echo "ERROR: pi-flues-synth.service not active" >&2
+    journalctl -u pi-flues-synth -n 25 --no-pager >&2 || true
+    exit 1
+  fi
+  log "start pi-ambient-synth (monitor/e-ink)"
+  sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
+  sleep 2
+  [[ -x "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" ]] && "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" || true
+  systemctl is-active pi-flues-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
+  if [[ "${PI_SKIP_DEPLOY_TIMER:-0}" != "1" ]]; then
+    sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
+  else
+    log "PI_SKIP_DEPLOY_TIMER=1 — leaving deploy timer stopped"
+  fi
+  exit 0
+fi
+
 log "stop deploy timer + synth services"
 sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
 sudo systemctl stop pi-ambient-synth-midi.service 2>/dev/null || true
 sudo systemctl stop pi-ambient-synth.service 2>/dev/null || true
-sudo systemctl stop supercollider.service 2>/dev/null || true
-pkill -x sclang 2>/dev/null || true
+sudo systemctl stop supercollider.service pi-flues-synth.service 2>/dev/null || true
+pkill -x sclang flues-synth 2>/dev/null || true
 free_alsa
 sleep 2.0
 

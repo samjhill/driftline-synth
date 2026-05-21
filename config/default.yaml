@@ -43,6 +43,8 @@ osc:
   python_listen_port: 57121
 
 audio:
+  # Pi production: set /etc/pi-ambient-synth/audio-mode.conf to AUDIO_MODE=flues
+  backend: "supercollider"  # supercollider | flues | direct_keys
   default_volume: 0.85
   patch_morph_seconds: 6.0
 

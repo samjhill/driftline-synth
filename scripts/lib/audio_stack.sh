@@ -18,9 +18,27 @@ free_alsa() {
   for svc in pipewire pipewire-pulse wireplumber pulseaudio jackd2; do
     sudo systemctl stop "$svc" 2>/dev/null || true
   done
-  pkill -x sclang 2>/dev/null || true
+  pkill -x sclang flues-synth 2>/dev/null || true
   stop_audio_stack
   sleep 1.0
+}
+
+install_flues_systemd_units() {
+  local root="${1:-/home/pi/pi-ambient-synth}"
+  if [[ -f "$root/systemd/pi-flues-synth.service" ]]; then
+    sudo cp "$root/systemd/pi-flues-synth.service" /etc/systemd/system/
+    sudo systemctl enable pi-flues-synth.service 2>/dev/null || true
+  fi
+  if [[ -f "$root/systemd/pi-ambient-synth-midi.service" ]]; then
+    sudo cp "$root/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/
+    sudo systemctl enable pi-ambient-synth-midi.service 2>/dev/null || true
+  fi
+  sudo mkdir -p /etc/systemd/system/pi-ambient-synth-midi.service.d
+  if [[ -f "$root/deploy/systemd/pi-ambient-synth-midi.flues.conf" ]]; then
+    sudo cp "$root/deploy/systemd/pi-ambient-synth-midi.flues.conf" \
+      /etc/systemd/system/pi-ambient-synth-midi.service.d/flues.conf
+  fi
+  sudo systemctl daemon-reload
 }
 
 install_sc_systemd_units() {

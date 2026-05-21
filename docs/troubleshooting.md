@@ -129,7 +129,9 @@ cd ~/pi-ambient-synth
 
 12. **Audio modes (Pi 3 headphone jack)** — Two supported paths in `/etc/pi-ambient-synth/audio-mode.conf`:
     - **`direct_keys`** — reliable KeyStep blips via `aplay` (`bash scripts/pi_enable_direct_keys.sh`). SuperCollider stopped. Tagged baseline: `v0.1.0-pi-direct-keys`.
-    - **`ambient`** — KeyStep → OSC → **SuperCollider voices** (`plughw:0,0`, no constant drone): `bash scripts/pi_enable_ambient_engine.sh`. Switch to simple blips with `pi_enable_direct_keys.sh`.
+    - **`flues`** (recommended on Pi 3) — KeyStep → MIDI bridge → **[Flues-Synth](https://github.com/danja/flues/tree/main/flues-synth)** on `plughw:0,0`: `bash scripts/pi_enable_flues_engine.sh`, then `bash scripts/prove_flues_engine_pi.sh`. No SuperCollider/JACK.
+    - **`ambient`** — KeyStep → OSC → SuperCollider (legacy; often silent on Pi headphones): `bash scripts/pi_enable_ambient_engine.sh`.
+    - **`direct_keys`** — short `aplay` blips only: `bash scripts/pi_enable_direct_keys.sh`.
 
 ### One-command verify (audio + engine)
 
