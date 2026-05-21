@@ -3,21 +3,18 @@
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
 var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
-var port, useAlsaSynth, engineTest, syncServerInPlace;
+var port, useAlsaSynth, engineTest, waitForServerRunning;
 
-// Pi SC 3.13: s.sync on main thread → "yield outside Routine"; sync inside fork + Condition.hang.
-syncServerInPlace = { |srv, setNoBoot|
-	var done = Condition.new;
-	fork {
-		if(setNoBoot == true, {
-			if(srv.options.respondsTo(\booting), {
-				srv.options.booting = false;
-			});
-		});
-		srv.sync;
-		done.signal;
+// Pi SC 3.13: no s.sync / Condition.hang on main (Routine yield error). Poll with Thread.sleep.
+waitForServerRunning = { |srv, timeout|
+	var t0 = SystemClock.seconds;
+	while { (SystemClock.seconds - t0) < timeout } {
+		if(srv.serverRunning == true, { ^true });
+		srv.sendMsg(\status);
+		if(srv.respondsTo(\ping), { srv.ping });
+		Thread.sleep(0.05);
 	};
-	done.hang;
+	srv.serverRunning == true;
 };
 
 patchParams = IdentityDictionary.new;
@@ -79,8 +76,9 @@ s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
 	// scsynth started by scripts/start_scsynth_alsa.sh (jackd + JACK client)
-	syncServerInPlace.(s, true);
-	if(s.serverRunning == true, {
+	if(s.options.respondsTo(\booting), { s.options.booting = false });
+	s.sendMsg(\status);
+	if(waitForServerRunning.(s, 12), {
 		("scsynth connected (external jackd) — device: %, rate: %".format(
 			~audioDevice, s.serverSampleRate
 		)).postln;
@@ -91,12 +89,11 @@ if(useAlsaSynth, {
 	Server.killAll;
 	if(s.serverRunning == true, {
 		s.quit;
-		syncServerInPlace.(s, false);
+		Thread.sleep(0.5);
 	});
 	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 	s.boot(~audioDevice);
-	syncServerInPlace.(s, false);
-	if(s.serverRunning == true, {
+	if(waitForServerRunning.(s, 30), {
 		("scsynth running — device: %, rate: %, out ch: %".format(
 			s.options.device, s.serverSampleRate, s.options.numOutputBusChannels
 		)).postln;
@@ -490,6 +487,6 @@ if(engineTest, {
 	"Pi Ambient Synth ENGINE_TEST ok".postln;
 	0.exit;
 });
-// Keep sclang alive for systemd (no N.wait on main thread).
-fork { loop { 1.wait } }.threadTerminateCondition.wait;
+// Keep sclang alive for systemd (main thread — no Routine .wait / Condition.hang on Pi SC 3.13).
+loop { Thread.sleep(60) };
 )
