@@ -108,7 +108,9 @@ do_sync() {
     curl -fsSL --connect-timeout 20 --max-time 120 "${base}/${rel}" -o "$INSTALL_DIR/$rel"
   done
   chmod +x "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
-  grep -q 'sc313-jackLink' "$INSTALL_DIR/synth/ambient_engine.scd" || fail "ambient_engine.scd missing sc313-jackLink"
+  grep -q 'sc313-jackAttach' "$INSTALL_DIR/synth/ambient_engine.scd" \
+    || grep -q 'sc313-jackLink' "$INSTALL_DIR/synth/ambient_engine.scd" \
+    || fail "ambient_engine.scd missing sc313-jackAttach marker"
 }
 
 install_unit() {

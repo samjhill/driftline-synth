@@ -63,7 +63,7 @@ patchParams[\root_note] = 48;
 port = 57120;
 useAlsaSynth = getenv("SC_HEADLESS_ALSA").notNil;
 engineTest = getenv("SC_ENGINE_TEST").notNil;
-"Pi Ambient Synth engine script loading (build sc313-jackLink)".postln;
+"Pi Ambient Synth engine script loading (build sc313-jackAttach)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 scPort = 57110;
 if(getenv("SC_SYNTH_PORT").notNil, {
@@ -73,14 +73,14 @@ s = Server(\piAmbient, NetAddr("127.0.0.1", scPort));
 Server.default = s;
 ~audioDevice = ~configureServerAudio.(s);
 if(useAlsaSynth, {
-	"Linking sclang to existing scsynth (port %)".format(scPort).postln;
-	s.boot;
-	// Pi SC 3.13: ^nil inside .do does not stop the loop — use while + tries.
+	// Do not s.boot — Pi SC 3.13 reboots scsynth (/quit), embeds JACK, kills external jackd.
+	"Attaching sclang to existing scsynth (port %) — no s.boot".format(scPort).postln;
 	tries = 0;
-	while { tries < 24 } {
+	while { tries < 40 } {
 		if(bootOk == true, {
-			tries = 24;
+			tries = 40;
 		}, {
+			s.sendMsg(\notify, port, NetAddr("127.0.0.1", port));
 			s.sync;
 			if(s.serverRunning == true, { bootOk = true });
 			tries = tries + 1;
