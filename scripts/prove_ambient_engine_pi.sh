@@ -28,7 +28,12 @@ echo "$j" | grep -qiE 'syntax error|command line parse failed' \
 echo "$j" | grep -qE 'Engine synths started|startup chime' \
   || { log "FAIL: engine not started"; exit 1; }
 
-pgrep -x jackd >/dev/null || log "WARN: jackd not running (ambient uses external jackd + scsynth)"
+if [[ -f /etc/systemd/system/supercollider.service.d/audio.conf ]] \
+  && grep -q SC_SCLANG_OWNS_AUDIO /etc/systemd/system/supercollider.service.d/audio.conf 2>/dev/null; then
+  pgrep -x jackd >/dev/null && log "WARN: jackd running (expected sclang-owned plughw audio)"
+else
+  pgrep -x jackd >/dev/null || log "WARN: jackd not running"
+fi
 
 [[ -x "$PY" ]] && "$PY" "$INSTALL_DIR/scripts/test_osc.py" \
   || { log "FAIL: test_osc.py"; exit 1; }

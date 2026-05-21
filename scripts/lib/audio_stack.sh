@@ -42,11 +42,9 @@ install_sc_systemd_units() {
 LimitMEMLOCK=infinity
 Environment=JACK_NO_START_SERVER=1
 Environment=JACK_NO_AUDIO_RESERVATION=1
-Environment=SC_HEADLESS_ALSA=1
-Environment=SC_AUDIO_DEVICE=hw:0,0
-Environment=SC_JACK_PERIOD=4096
-Environment=SC_JACK_NPERIODS=3
-Environment=SC_JACK_DEFAULT_OUTPUTS=system:playback_1,system:playback_2
+Environment=SC_SCLANG_OWNS_AUDIO=1
+Environment=SC_AUDIO_DEVICE=plughw:0,0
+Environment=PI_SKIP_TEXTURE_DRONE=1
 EOF
   sudo systemctl daemon-reload
 }

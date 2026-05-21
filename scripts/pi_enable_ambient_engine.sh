@@ -14,12 +14,9 @@ else
   echo "AUDIO_MODE=ambient" | sudo tee "$CONF" >/dev/null
 fi
 
-sudo rm -f "$DROPIN" 2>/dev/null || true
-sudo mkdir -p "$DROPIN_DIR"
-if [[ -f "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.ambient-hybrid.conf" ]]; then
-  sudo cp "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.ambient-hybrid.conf" \
-    "$DROPIN_DIR/ambient-hybrid.conf"
-fi
+sudo rm -f "$DROPIN" /etc/systemd/system/pi-ambient-synth-midi.service.d/ambient-hybrid.conf 2>/dev/null || true
+sudo systemctl stop pi-ambient-alsa-drone.service 2>/dev/null || true
+sudo systemctl disable pi-ambient-alsa-drone.service 2>/dev/null || true
 
 # shellcheck source=scripts/lib/audio_stack.sh
 source "$INSTALL_DIR/scripts/lib/audio_stack.sh"
@@ -29,12 +26,9 @@ sudo mkdir -p /etc/systemd/system/supercollider.service.d
 sudo tee /etc/systemd/system/supercollider.service.d/audio.conf >/dev/null <<'EOF'
 [Service]
 LimitMEMLOCK=infinity
-Environment=JACK_NO_START_SERVER=1
-Environment=JACK_NO_AUDIO_RESERVATION=1
-Environment=SC_HEADLESS_ALSA=1
-Environment=SC_AUDIO_DEVICE=hw:0,0
-Environment=SC_JACK_PERIOD=4096
-Environment=SC_JACK_NPERIODS=3
+Environment=SC_SCLANG_OWNS_AUDIO=1
+Environment=SC_AUDIO_DEVICE=plughw:0,0
+Environment=PI_SKIP_TEXTURE_DRONE=1
 EOF
 
 sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/
@@ -50,16 +44,7 @@ else
 fi
 
 sleep 2
-if [[ -f "$INSTALL_DIR/systemd/pi-ambient-alsa-drone.service" ]]; then
-  sudo cp "$INSTALL_DIR/systemd/pi-ambient-alsa-drone.service" /etc/systemd/system/
-  sudo systemctl daemon-reload
-  sudo systemctl enable pi-ambient-alsa-drone.service 2>/dev/null || true
-  sudo systemctl restart pi-ambient-alsa-drone.service 2>/dev/null || true
-  sleep 1
-  systemctl is-active pi-ambient-alsa-drone.service 2>/dev/null && echo "==> ALSA texture drone active (plughw)"
-fi
-
 if [[ -x "$INSTALL_DIR/scripts/prove_ambient_engine_pi.sh" ]]; then
   "$INSTALL_DIR/scripts/prove_ambient_engine_pi.sh" || true
 fi
-echo "==> Listen on 3.5 mm jack: continuous pad (ALSA drone) + KeyStep blips; SC engine on JACK if audible."
+echo "==> KeyStep → OSC → SuperCollider voices (no constant drone, no aplay blips). Play keys on 3.5 mm jack."

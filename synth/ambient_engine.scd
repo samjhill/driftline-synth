@@ -413,8 +413,11 @@ SynthDef(\piRawTone, { |out=0, freq=440, amp=0.7, dur=0.5|
 	try { ^node.isRunning } { ^false };
 };
 
+~skipTextureDrone = getenv("PI_SKIP_TEXTURE_DRONE").notNil;
+
 ~initEngineSynths = {
-	var g;
+	var g, skipTex;
+	skipTex = ~skipTextureDrone;
 	~voices.do(_.free);
 	~voices.clear;
 	if(textureSynth.notNil, {
@@ -432,16 +435,24 @@ SynthDef(\piRawTone, { |out=0, freq=440, amp=0.7, dur=0.5|
 	~morphBuses = IdentityDictionary.new;
 	g = Group.tail(s);
 	synthGroup = g;
-	textureSynth = Synth.tail(g, \piTextureDrone, [\root, 48, \density, 0.55, \amp, masterVol * 1.6]);
-	Synth.tail(g, \piReverbFx, [\inBus, 4, \out, 0, \mix, 0.42, \room, 0.8]);
-	Synth.tail(g, \piDelayFx, [\inBus, 6, \out, 0, \mix, 0.18, \dt, 0.5]);
+	if(skipTex.not, {
+		textureSynth = Synth.tail(g, \piTextureDrone, [\root, 48, \density, 0.55, \amp, masterVol * 1.6]);
+	});
+	Synth.tail(g, \piReverbFx, [\inBus, 4, \out, 8, \mix, 0.42, \room, 0.8]);
+	Synth.tail(g, \piDelayFx, [\inBus, 6, \out, 8, \mix, 0.18, \dt, 0.5]);
 	limiterSynth = Synth.tail(g, \piLimiter, [\in, 8, \out, 0, \level, 0.92]);
 	s.sync;
-	"Engine synths started (texture drone + FX chain)".postln;
+	if(skipTex, {
+		"Engine synths started (keyboard voices + FX; no texture drone)".postln;
+	}, {
+		"Engine synths started (texture drone + FX chain)".postln;
+	});
 };
 
 ~engineHealthy = {
-	~engineNodeRunning.(limiterSynth) and: { ~engineNodeRunning.(textureSynth) };
+	~engineNodeRunning.(limiterSynth) and: {
+		if(~skipTextureDrone, { true }, { ~engineNodeRunning.(textureSynth) });
+	};
 };
 
 ~ensureEngine = {
