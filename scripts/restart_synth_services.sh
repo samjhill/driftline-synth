@@ -79,16 +79,16 @@ from config_loader import load_config, resolve_data_path, install_root
 from state_store import StateStore
 from patch_generator import PatchGenerator
 from patch_resolve import resolve_current_patch
-from flues_client import apply_patch, open_flues_output
+from flues_client import apply_keyboard_voice, open_flues_output
 root = install_root()
 cfg = load_config()
 store = StateStore(resolve_data_path(cfg['app']['state_path'], root), resolve_data_path(cfg['app']['favorites_path'], root))
 gen = PatchGenerator(cfg)
 p = resolve_current_patch(cfg, store, gen)
 out = open_flues_output()
-if out and p:
-    apply_patch(out, p)
-    print('Applied patch to Flues:', p.summary())
+if out:
+    apply_keyboard_voice(out, p)
+    print('Applied Flues keyboard voice:', p.summary() if p else 'defaults')
 " 2>/dev/null || true
   fi
   systemctl is-active pi-flues-synth.service 2>/dev/null || true

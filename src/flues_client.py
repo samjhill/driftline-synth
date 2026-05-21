@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
 
 import mido
 
@@ -12,20 +11,30 @@ from patch_model import Patch
 
 logger = logging.getLogger(__name__)
 
-# Flues listens on MIDI channel 1 in docs → mido channel 0.
+# Flues docs: channel 1 → mido channel 0.
 FLUES_CH = 0
 
-# Ambient-friendly programs (see flues-synth/docs/midi.md).
-PROGRAM_AMBIENT = 5  # Physical Model
-PROGRAM_FORMANT = 3
+# Avoid program 0/7 (Disyn Echo) and bell/drum interfaces — they sound like cymbals on keys.
+PROGRAM_KEYBOARD = 5  # Physical Model: Noise → Interface → Delays → Filter
+PROGRAM_FORMANT = 3  # Soft vocal pad
 PROGRAM_HYBRID = 6
-PROGRAM_DISYN = 0
+
+# CC 24 Interface Type (discrete 0–11). See flues-synth/docs/midi.md
+INTERFACE_NAMES = (
+    "pluck",
+    "hit",
+    "reed",
+    "flute",
+    "brass",
+    "bow",
+    "bell",
+    "drum",
+)
 
 
 def find_flues_output_port() -> str | None:
     for name in mido.get_output_names():
-        low = name.lower()
-        if "flues" in low:
+        if "flues" in name.lower():
             return name
     return None
 
@@ -46,44 +55,92 @@ def _hz_to_cc(hz: float, lo: float, hi: float) -> int:
     return int(round(127 * math.log(hz / lo) / math.log(hi / lo)))
 
 
+def _interface_cc(name: str) -> int:
+    """Discrete interface selector (Reed/Flute/Bow — not Bell/Drum/Hit)."""
+    idx = INTERFACE_NAMES.index(name) if name in INTERFACE_NAMES else 2
+    return int(round(idx / 11.0 * 127))
+
+
 def patch_to_program(patch: Patch) -> int:
-    """Pick a Flues program from patch character."""
-    if patch.noise_level > 0.12 and patch.filter_cutoff < 1200:
+    """Ambient KeyStep: prefer physical model or formant, never Disyn Echo."""
+    if patch.filter_cutoff < 900 and patch.attack > 0.15:
         return PROGRAM_FORMANT
-    if patch.texture_density > 0.55 or patch.reverb_mix > 0.5:
+    if patch.noise_level > 0.18 and patch.reverb_mix > 0.55:
         return PROGRAM_HYBRID
-    if patch.oscillator_blend > 0.6:
-        return PROGRAM_DISYN
-    return PROGRAM_AMBIENT
+    return PROGRAM_KEYBOARD
+
+
+def _interface_for_patch(patch: Patch) -> str:
+    if patch.attack > 0.2 or patch.sustain < 0.45:
+        return "bow"
+    if patch.brightness > 0.7:
+        return "flute"
+    return "reed"
+
+
+def apply_keyboard_voice(port: mido.ports.BaseOutput, patch: Patch | None = None) -> None:
+    """Program + CCs tuned for melodic KeyStep (not percussion)."""
+    p = patch
+    prog = patch_to_program(p) if p else PROGRAM_KEYBOARD
+    port.send(mido.Message("program_change", channel=FLUES_CH, program=prog))
+
+    iface = _interface_for_patch(p) if p else "reed"
+    attack = p.attack if p else 0.12
+    release = p.release if p else 1.8
+    cutoff = p.filter_cutoff if p else 2200.0
+    res = p.filter_resonance if p else 0.35
+    delay_fb = (p.delay_mix * 0.5 if p else 0.22)
+    rev_fb = (p.reverb_mix * 0.45 if p else 0.28)
+
+    targets: list[tuple[int, int]] = [
+        (24, _interface_cc(iface)),
+        (1, _f_to_cc(0.38)),
+        (7, _f_to_cc(0.72)),
+        (20, _f_to_cc(0.06 if p else 0.08, 0.0, 0.25)),
+        (73, _f_to_cc(max(attack, 0.05), 0.02, 0.6)),
+        (72, _f_to_cc(max(release, 0.4), 0.2, 3.0)),
+        (32, _hz_to_cc(cutoff, 200, 8000)),
+        (33, _f_to_cc(min(res, 1.2), 0.1, 1.5)),
+        (28, _f_to_cc(delay_fb, 0.05, 0.35)),
+        (29, _f_to_cc(rev_fb, 0.05, 0.35)),
+        (30, _f_to_cc(0.1, 0.0, 0.25)),
+    ]
+    for cc, val in targets:
+        _cc(port, cc, val)
+    logger.info("Flues keyboard voice: program=%s interface=%s", prog, iface)
 
 
 def apply_patch(port: mido.ports.BaseOutput, patch: Patch, *, morph_steps: int = 0) -> None:
     """Send program + CCs to Flues-Synth."""
+    if morph_steps <= 1:
+        apply_keyboard_voice(port, patch)
+        return
+
     prog = patch_to_program(patch)
     port.send(mido.Message("program_change", channel=FLUES_CH, program=prog))
     logger.info("Flues program %s for %s", prog, patch.summary())
 
+    iface = _interface_for_patch(patch)
     semi = max(-12, min(12, patch.root_note - 48))
     targets: list[tuple[int, int]] = [
-        (7, _f_to_cc(0.88)),
-        (73, _f_to_cc(patch.attack, 0.001, 1.0)),
-        (72, _f_to_cc(patch.release, 0.01, 3.0)),
-        (32, _hz_to_cc(patch.filter_cutoff, 80, 12000)),
-        (33, _f_to_cc(patch.filter_resonance, 0.1, 2.5)),
-        (20, _f_to_cc(patch.noise_level, 0.0, 0.4)),
-        (28, _f_to_cc(patch.delay_mix * 0.85, 0.0, 0.55)),
-        (29, _f_to_cc(patch.reverb_mix * 0.7, 0.0, 0.5)),
-        (1, _f_to_cc(0.35 + patch.texture_density * 0.35, 0.0, 1.0)),
+        (24, _interface_cc(iface)),
+        (7, _f_to_cc(0.72)),
+        (1, _f_to_cc(0.38)),
+        (73, _f_to_cc(max(patch.attack, 0.05), 0.02, 0.6)),
+        (72, _f_to_cc(max(patch.release, 0.4), 0.2, 3.0)),
+        (32, _hz_to_cc(patch.filter_cutoff, 200, 8000)),
+        (33, _f_to_cc(min(patch.filter_resonance, 1.2), 0.1, 1.5)),
+        (20, _f_to_cc(patch.noise_level * 0.4, 0.0, 0.2)),
+        (28, _f_to_cc(patch.delay_mix * 0.45, 0.05, 0.35)),
+        (29, _f_to_cc(patch.reverb_mix * 0.4, 0.05, 0.35)),
         (26, int(round((semi + 12) / 24.0 * 127))),
     ]
 
-    steps = max(1, morph_steps)
-    for step in range(steps):
-        frac = (step + 1) / steps
+    for step in range(morph_steps):
+        frac = (step + 1) / morph_steps
         for cc, val in targets:
-            _cc(port, cc, int(val * frac) if step < steps - 1 else val)
-        if morph_steps > 1:
-            time.sleep(0.04)
+            _cc(port, cc, int(val * frac) if step < morph_steps - 1 else val)
+        time.sleep(0.04)
 
 
 def open_flues_output() -> mido.ports.BaseOutput | None:
