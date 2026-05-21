@@ -127,6 +127,10 @@ cd ~/pi-ambient-synth
 
 11. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
 
+12. **Audio modes (Pi 3 headphone jack)** — Two supported paths in `/etc/pi-ambient-synth/audio-mode.conf`:
+    - **`direct_keys`** — reliable KeyStep blips via `aplay` (`bash scripts/pi_enable_direct_keys.sh`). SuperCollider stopped. Tagged baseline: `v0.1.0-pi-direct-keys`.
+    - **`ambient`** — full `ambient_engine.scd` via **native ALSA scsynth** (no JACK): `bash scripts/pi_enable_ambient_engine.sh`, then `bash scripts/prove_ambient_engine_pi.sh`. Driver marker: `grep SC_SYNTH_DRIVER /var/lib/pi-ambient-synth/scsynth_audio.conf` should show `alsa`. Switch back to blips with `pi_enable_direct_keys.sh`.
+
 ### One-command verify (audio + engine)
 
 From your **Mac** (rsync this repo — no commit-pinned curl chain):

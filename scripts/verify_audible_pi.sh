@@ -8,10 +8,15 @@ MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 
 log() { echo "$(date -Iseconds) [audible] $*"; }
 
-[[ -x "$INSTALL_DIR/scripts/ensure_jack_playback.sh" ]] \
-  && "$INSTALL_DIR/scripts/ensure_jack_playback.sh" \
-  || { log "FAIL: JACK playback not linked"; exit 1; }
-log "JACK playback linked"
+DRIVER_FILE="${MARKER_DIR}/scsynth_audio.conf"
+if [[ -f "$DRIVER_FILE" ]] && grep -q '^SC_SYNTH_DRIVER=alsa$' "$DRIVER_FILE" 2>/dev/null; then
+  log "scsynth native ALSA — skip JACK playback check"
+else
+  [[ -x "$INSTALL_DIR/scripts/ensure_jack_playback.sh" ]] \
+    && "$INSTALL_DIR/scripts/ensure_jack_playback.sh" \
+    || { log "FAIL: JACK playback not linked"; exit 1; }
+  log "JACK playback linked"
+fi
 
 if [[ "${PI_SKIP_APLAY_TEST:-}" != "1" ]] && [[ -x "$PY" ]]; then
   "$PY" "$INSTALL_DIR/scripts/play_headphone_test.py" -D plughw:0,0 -d 2 \

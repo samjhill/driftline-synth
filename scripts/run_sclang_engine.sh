@@ -23,17 +23,22 @@ pkill -x sclang 2>/dev/null || true
 sleep 0.5
 "$ROOT/scripts/start_scsynth_alsa.sh" || exit 1
 
-# SC_JACK_DEFAULT_OUTPUTS often does not stick after sclang attaches; reconnect on a schedule.
-(
-  for delay in 8 15 22 30 40 55 75; do
-    sleep "$delay"
-    [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
-  done
-  while true; do
-    sleep 25
-    [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
-  done
-) &
+DRIVER_FILE="${PI_SC_DRIVER_FILE:-/var/lib/pi-ambient-synth/scsynth_audio.conf}"
+if [[ -f "$DRIVER_FILE" ]] && grep -q '^SC_SYNTH_DRIVER=alsa$' "$DRIVER_FILE" 2>/dev/null; then
+  echo "scsynth on native ALSA — skipping JACK playback reconnect loop"
+else
+  # SC_JACK_DEFAULT_OUTPUTS often does not stick after sclang attaches; reconnect on a schedule.
+  (
+    for delay in 8 15 22 30 40 55 75; do
+      sleep "$delay"
+      [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
+    done
+    while true; do
+      sleep 25
+      [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
+    done
+  ) &
+fi
 
 # Run script as argument (-l is for libraries, not .scd files; breaks headless systemd).
 # Line-buffered stdout so systemd journal shows Booting/scsynth lines promptly.

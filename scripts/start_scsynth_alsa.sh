@@ -12,6 +12,8 @@ RATE="${SC_SAMPLE_RATE:-48000}"
 LOG="${SCSYNTH_START_LOG:-/tmp/scsynth-alsa-start.log}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 DRIVER_FILE="$MARKER_DIR/scsynth_audio.conf"
+ALSA_BUF="${SC_ALSA_BUFFER:-4096}"
+USE_NATIVE_ALSA="${SC_USE_NATIVE_ALSA:-0}"
 JACK_PERIOD="${SC_JACK_PERIOD:-4096}"
 JACK_NPERIODS="${SC_JACK_NPERIODS:-3}"
 SCSYNTH_JACK_SETTLE_SEC="${SCSYNTH_JACK_SETTLE_SEC:-4.0}"
@@ -22,6 +24,15 @@ jack_alsa_dev() {
   d="${d#plughw:}"
   d="${d#hw:}"
   echo "hw:${d}"
+}
+
+alsa_candidates() {
+  local base="${SC_AUDIO_DEVICE:-hw:0,0}"
+  case "$base" in
+    hw:0,0 | plughw:0,0) echo "hw:0,0" "plughw:0,0" ;;
+    hw:0 | plughw:0) echo "hw:0" "plughw:0" ;;
+    *) echo "$base" ;;
+  esac
 }
 
 jack_candidates() {
@@ -139,6 +150,40 @@ start_jack() {
   return 1
 }
 
+start_scsynth_native_alsa() {
+  local dev="$1" pid
+  pkill -x jackd 2>/dev/null || true
+  pkill -9 -x jackd 2>/dev/null || true
+  rm -f /dev/shm/jack-* /dev/shm/jackdmp* /dev/shm/sem.jack* 2>/dev/null || true
+  pkill -9 -x scsynth 2>/dev/null || true
+  for _ in $(seq 1 30); do
+    port_open || break
+    sleep 0.15
+  done
+  sleep 0.5
+  {
+    echo "=== $(date -Iseconds) scsynth native ALSA dev=$dev port=$PORT buf=$ALSA_BUF ==="
+    echo "cmd: scsynth -u $PORT -a alsa -H $dev -i 2 -o 2 -R $RATE -l 1"
+    scsynth -u "$PORT" -a alsa -H "$dev" -i 2 -o 2 -R "$RATE" -l 1
+  } >>"$LOG" 2>&1 &
+  pid=$!
+  if wait_scsynth "$pid"; then
+    mkdir -p "$MARKER_DIR"
+    {
+      echo "SC_SYNTH_DRIVER=alsa"
+      echo "SC_ALSA_DEVICE=$dev"
+      echo "SC_SYNTH_PORT=$PORT"
+      echo "SC_SYNTH_RATE=$RATE"
+      echo "SC_ALSA_BUFFER=$ALSA_BUF"
+    } >"$DRIVER_FILE"
+    echo "scsynth ready: native ALSA dev=$dev port=$PORT pid=$pid"
+    return 0
+  fi
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return 1
+}
+
 start_scsynth_client() {
   local dev="$1" pid
   export JACK_NO_START_SERVER=1
@@ -203,9 +248,30 @@ mkdir -p "$(dirname "$LOG")"
 
 echo "scsynth: $(scsynth -v 2>&1 | head -1 || true)"
 echo "jackd: $(command -v jackd || echo missing)"
-echo "Note: Pi SC 3.13 — external jackd + scsynth JACK client" | tee -a "$LOG"
+if [[ "$USE_NATIVE_ALSA" == "1" ]]; then
+  echo "Note: Pi — native ALSA scsynth (no jackd); JACK fallback if this fails" | tee -a "$LOG"
+else
+  echo "Note: Pi SC 3.13 — external jackd + scsynth JACK client" | tee -a "$LOG"
+fi
 
 stop_audio_stack
+
+if [[ "$USE_NATIVE_ALSA" == "1" ]]; then
+  while IFS= read -r dev; do
+    [[ -n "$dev" ]] || continue
+    if start_scsynth_native_alsa "$dev"; then
+      exit 0
+    fi
+    echo "native ALSA failed for $dev" >>"$LOG"
+    stop_audio_stack
+  done < <(alsa_candidates)
+  if [[ "${SC_NATIVE_ALSA_ONLY:-}" == "1" ]]; then
+    echo "ERROR: native ALSA scsynth did not stay up on port $PORT" >&2
+    tail -40 "$LOG" >&2 || true
+    exit 1
+  fi
+  echo "WARN: native ALSA failed — trying JACK stack" | tee -a "$LOG"
+fi
 
 if [[ "${SC_JACK_ALREADY:-}" == "1" ]]; then
   dev="$(jack_candidates | head -1)"

@@ -19,6 +19,13 @@ pkill -x jackd scsynth sclang 2>/dev/null || true
 sleep 1
 
 sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/ 2>/dev/null || true
+sudo mkdir -p /etc/systemd/system/pi-ambient-synth-midi.service.d
+if [[ -f "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.direct-keys.conf" ]]; then
+  sudo cp "$INSTALL_DIR/deploy/systemd/pi-ambient-synth-midi.direct-keys.conf" \
+    /etc/systemd/system/pi-ambient-synth-midi.service.d/direct-keys.conf
+else
+  echo "WARN: missing deploy/systemd/pi-ambient-synth-midi.direct-keys.conf" >&2
+fi
 sudo systemctl daemon-reload
 sudo systemctl enable pi-ambient-synth-midi.service pi-ambient-synth-monitor.service
 sudo systemctl restart pi-ambient-synth-midi.service pi-ambient-synth-monitor.service

@@ -1,6 +1,7 @@
 [Unit]
-Description=Pi Ambient Synth MIDI bridge (KeyStep → direct ALSA or OSC)
+Description=Pi Ambient Synth MIDI bridge (KeyStep → OSC or direct ALSA)
 After=sound.target
+Wants=supercollider.service
 StartLimitIntervalSec=120
 StartLimitBurst=6
 
@@ -10,10 +11,9 @@ User=pi
 WorkingDirectory=/home/pi/pi-ambient-synth
 Environment=HOME=/home/pi
 Environment=PI_MIDI_MAIN_THREAD=1
-Environment=PI_DIRECT_ALSA_KEYS=1
+Environment=PI_DIRECT_ALSA_KEYS=0
 Environment=LOG_LEVEL=INFO
-# direct_keys: free headphone jack from JACK (only reliable output path on Pi 3).
-ExecStartPre=/bin/sh -c 'systemctl stop supercollider.service 2>/dev/null || true; pkill -x jackd scsynth sclang 2>/dev/null || true; sleep 0.5'
+# direct_keys drop-in: deploy/systemd/pi-ambient-synth-midi.direct-keys.conf (pi_enable_direct_keys.sh)
 ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/scripts/pi_midi_bridge.py
 Restart=always
 RestartSec=5
