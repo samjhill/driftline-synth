@@ -165,7 +165,7 @@ class PiAmbientSynth:
         eink_cfg = self.config.get("eink", {})
         if not eink_cfg.get("show_playing_note", True):
             return
-        if not eink_cfg.get("enabled", True) or not self.eink.available:
+        if not eink_cfg.get("enabled", True) or not self._ensure_eink():
             return
 
         now = time.monotonic()
