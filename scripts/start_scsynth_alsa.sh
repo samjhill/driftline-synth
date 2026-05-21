@@ -29,9 +29,9 @@ jack_alsa_dev() {
 alsa_candidates() {
   local base="${SC_AUDIO_DEVICE:-hw:0,0}"
   case "$base" in
-    hw:0,0 | plughw:0,0) echo "hw:0,0" "plughw:0,0" ;;
-    hw:0 | plughw:0) echo "hw:0" "plughw:0" ;;
-    *) echo "$base" ;;
+    hw:0,0 | plughw:0,0) printf '%s\n' "hw:0,0" "plughw:0,0" ;;
+    hw:0 | plughw:0) printf '%s\n' "hw:0" "plughw:0" ;;
+    *) printf '%s\n' "$base" ;;
   esac
 }
 
