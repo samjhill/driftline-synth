@@ -14,6 +14,15 @@ source "$INSTALL_DIR/scripts/lib/audio_stack.sh"
 
 log() { echo "$(date -Iseconds) [restart-synth] $*"; }
 
+if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
+  && grep -q 'AUDIO_MODE=direct_keys' /etc/pi-ambient-synth/audio-mode.conf 2>/dev/null; then
+  log "audio-mode=direct_keys — skip SuperCollider/JACK"
+  if [[ -x "$INSTALL_DIR/scripts/pi_enable_direct_keys.sh" ]]; then
+    "$INSTALL_DIR/scripts/pi_enable_direct_keys.sh"
+    exit 0
+  fi
+fi
+
 log "stop deploy timer + synth services"
 sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
 sudo systemctl stop pi-ambient-synth-midi.service 2>/dev/null || true

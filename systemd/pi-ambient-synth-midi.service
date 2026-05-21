@@ -1,8 +1,6 @@
 [Unit]
-Description=Pi Ambient Synth MIDI bridge (KeyStep → OSC)
-After=supercollider.service pi-ambient-synth.service
-Wants=supercollider.service
-# Do not Requires=supercollider — Test note restarts SC briefly; Requires would stop MIDI and leave keys silent.
+Description=Pi Ambient Synth MIDI bridge (KeyStep → direct ALSA or OSC)
+After=sound.target
 StartLimitIntervalSec=120
 StartLimitBurst=6
 
@@ -12,7 +10,10 @@ User=pi
 WorkingDirectory=/home/pi/pi-ambient-synth
 Environment=HOME=/home/pi
 Environment=PI_MIDI_MAIN_THREAD=1
+Environment=PI_DIRECT_ALSA_KEYS=1
 Environment=LOG_LEVEL=INFO
+# direct_keys: free headphone jack from JACK (only reliable output path on Pi 3).
+ExecStartPre=/bin/sh -c 'systemctl stop supercollider.service 2>/dev/null || true; pkill -x jackd scsynth sclang 2>/dev/null || true; sleep 0.5'
 ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/scripts/pi_midi_bridge.py
 Restart=always
 RestartSec=5

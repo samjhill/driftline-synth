@@ -513,10 +513,31 @@ def _sigil_png(config: dict[str, Any], patch: Patch | None = None) -> bytes:
     return buf.getvalue()
 
 
+def _pi_direct_keys_mode() -> bool:
+    conf = Path("/etc/pi-ambient-synth/audio-mode.conf")
+    if conf.is_file():
+        try:
+            return "direct_keys" in conf.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    return False
+
+
 def _run_test_note_audio(config: dict[str, Any]) -> None:
-    """Background: exclusive ALSA blast (jack released), then JACK/OSC."""
+    """Background: Pi headphone test (direct ALSA blip or JACK/OSC stack)."""
     try:
         root = install_root()
+        py = root / ".venv/bin/python"
+        blip = root / "scripts" / "play_keyboard_blip.py"
+        if _pi_direct_keys_mode() and py.is_file() and blip.is_file():
+            _set_alsa_pcm(100, mute=False)
+            subprocess.run(
+                [str(py), str(blip), "60", "127", "-D", "hw:0,0", "-d", "0.4"],
+                check=False,
+                timeout=8,
+                cwd=str(root),
+            )
+            return
         tone = root / "scripts" / "pi_headphone_tone_only.sh"
         if tone.is_file():
             subprocess.run(
@@ -579,7 +600,11 @@ def _trigger_test_note(config: dict[str, Any]) -> dict[str, Any]:
         "note": 60,
         "velocity": 127,
         "beep_hz": 523.25,
-        "message": "Pi jack: ~6s loud tone (jack released), then synth beep + C4",
+        "message": (
+            "Direct ALSA blip on Pi jack"
+            if _pi_direct_keys_mode()
+            else "Pi jack: ~6s loud tone (jack released), then synth beep + C4"
+        ),
     }
 
 
@@ -865,7 +890,7 @@ def _html_page(status: dict[str, Any]) -> str:
     The synth runs headless on the Pi — use
     <a href="{_escape(monitor_url)}">{_escape(monitor_url)}</a> from any phone/laptop on the same Wi‑Fi.
   </p>
-  <p class="muted">Sound (Test note, KeyStep) plays on the <strong>Pi headphone jack</strong>, not this device’s speakers.</p>
+  <p class="muted">Sound plays on the <strong>Pi headphone jack</strong> (not this device’s speakers). KeyStep uses <strong>direct ALSA</strong> (SuperCollider/JACK off) for reliable output on Pi 3.</p>
 
   <nav class="tabs" role="tablist" aria-label="Monitor sections">
     <button type="button" class="tab-btn active" role="tab" id="tab-btn-sound" aria-selected="true" aria-controls="tab-sound" data-tab="sound">Sound</button>

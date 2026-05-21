@@ -43,6 +43,7 @@ pi_rsync "$ROOT/scripts/lib/" "$HOST:$REMOTE/scripts/lib/"
 pi_rsync "$ROOT/src/" "$HOST:$REMOTE/src/"
 pi_rsync "$ROOT/synth/" "$HOST:$REMOTE/synth/"
 pi_rsync "$ROOT/config/default.yaml" "$HOST:$REMOTE/config/"
+pi_rsync "$ROOT/deploy/" "$HOST:$REMOTE/deploy/"
 pi_rsync "$ROOT/systemd/" "$HOST:$REMOTE/systemd/"
 
 pi_ssh "$HOST" "chmod +x $REMOTE/scripts/*.sh 2>/dev/null || true"

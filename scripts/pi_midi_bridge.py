@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -44,21 +45,38 @@ def main() -> int:
 
     midi = MidiController(config)
 
+    direct_keys = os.environ.get("PI_DIRECT_ALSA_KEYS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    blip_py = root / "scripts" / "play_keyboard_blip.py"
+    py = root / ".venv/bin/python"
     jack_script = root / "scripts" / "ensure_jack_playback.sh"
     _jack_ticks = 0
 
     def on_note_on(note: int, velocity: int, ch: int) -> None:
         nonlocal _jack_ticks
-        logger.info("bridge → OSC note_on ch=%s note=%s vel=%s", ch, note, velocity)
-        osc.note_on(note, velocity)
-        _jack_ticks += 1
-        if jack_script.is_file() and (_jack_ticks <= 3 or _jack_ticks % 12 == 0):
-            subprocess.run(["bash", str(jack_script)], check=False, timeout=6)
+        logger.info("bridge → note_on ch=%s note=%s vel=%s", ch, note, velocity)
+        if direct_keys and blip_py.is_file() and py.is_file():
+            subprocess.Popen(
+                [str(py), str(blip_py), str(note), str(velocity), "-D", "hw:0,0", "-d", "0.2"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        else:
+            logger.info("bridge → OSC note_on ch=%s note=%s vel=%s", ch, note, velocity)
+            osc.note_on(note, velocity)
+            _jack_ticks += 1
+            if jack_script.is_file() and (_jack_ticks <= 3 or _jack_ticks % 12 == 0):
+                subprocess.run(["bash", str(jack_script)], check=False, timeout=6)
 
     def on_note_off(note: int, velocity: int, ch: int) -> None:
         if os.environ.get("PI_MIDI_LOG_NOTES", "").strip() in ("1", "true", "yes"):
             logger.info("note_off ch=%s note=%s", ch, note)
-        osc.note_off(note, velocity)
+        if not direct_keys:
+            osc.note_off(note, velocity)
 
     def on_reseed() -> None:
         nonlocal patch
@@ -89,7 +107,10 @@ def main() -> int:
         listening=True,
         state="running",
     )
-    logger.info("MIDI bridge running on %s → OSC", midi.port_name)
+    if direct_keys:
+        logger.info("MIDI bridge DIRECT ALSA on %s (hw:0,0 blips; SuperCollider off)", midi.port_name)
+    else:
+        logger.info("MIDI bridge running on %s → OSC", midi.port_name)
 
     def stop(_s=None, _f=None):
         global _running
