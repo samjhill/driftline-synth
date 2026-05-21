@@ -27,6 +27,7 @@ from midi_clock import MidiClock
 from play_tracker import PlayTracker
 from sigil_export import export_sigil
 from state_store import StateStore
+from pisugar_battery import BatterySnapshot, read_battery_snapshot
 from visual_generator import VisualGenerator
 
 logger = logging.getLogger("pi_ambient_synth")
@@ -57,6 +58,18 @@ class PiAmbientSynth:
         self._running = True
         self._reseed_morph = config.get("audio", {}).get("patch_morph_seconds", 6.0)
         self._last_note_eink_time = 0.0
+        self._last_battery_poll = 0.0
+        self._battery_snapshot: BatterySnapshot | None = None
+
+    def _battery_for_display(self) -> BatterySnapshot | None:
+        ps = self.config.get("pisugar", {})
+        if not ps.get("enabled", False) or not ps.get("show_on_display", True):
+            return None
+        snap = read_battery_snapshot(self.config)
+        if snap.available:
+            self._battery_snapshot = snap
+            return snap
+        return self._battery_snapshot if self._battery_snapshot else None
 
     def _resolve_patch(self) -> Patch:
         had_saved = self.state_store.load_current() is not None
@@ -73,7 +86,14 @@ class PiAmbientSynth:
         self.osc.set_volume(vol)
         self.eink.init()
         if self.config.get("eink", {}).get("enabled", True):
-            self.eink.show_status("synth", "Loading synth", "patch + MIDI", "")
+            self.eink.show_status(
+                "synth",
+                "Loading synth",
+                "patch + MIDI",
+                "",
+                config=self.config,
+                battery=self._battery_for_display(),
+            )
         self._patch = self._resolve_patch()
         self.osc.send_patch(self._patch)
         self._update_display(self._patch)
@@ -165,7 +185,14 @@ class PiAmbientSynth:
         if self._patch:
             patch_line = self._patch.name[:22]
             subtitle = f"{subtitle}  {patch_line}".strip() if subtitle else patch_line
-        self.eink.show_status("playing", title, subtitle, "")
+        self.eink.show_status(
+            "playing",
+            title,
+            subtitle,
+            "",
+            config=self.config,
+            battery=self._battery_for_display(),
+        )
 
     def _on_note_on(self, note: int, velocity: int, channel: int) -> None:
         root, arp_changed = self.play.note_on(note)
@@ -190,7 +217,7 @@ class PiAmbientSynth:
         self._refresh_playing_note_display(force=not self.play.active_notes)
 
     def _update_display(self, patch: Patch, favorite: bool = False) -> None:
-        img = self.visual.render_patch(patch)
+        img = self.visual.render_patch(patch, battery=self._battery_for_display())
         if favorite:
             from PIL import ImageDraw
 
@@ -223,7 +250,14 @@ class PiAmbientSynth:
             path = export_sigil(self._patch, self.visual, self._sigils_dir)
             self.osc.tape_grit(0.2, 3.0)
             if self.config.get("eink", {}).get("enabled", True):
-                self.eink.show_status("ready", "Sigil saved", path.name[:22], "")
+                self.eink.show_status(
+                    "ready",
+                    "Sigil saved",
+                    path.name[:22],
+                    "",
+                    config=self.config,
+                    battery=self._battery_for_display(),
+                )
             logger.info("Sigil exported: %s", path)
         logger.info("Reseeded: %s", self._patch.summary())
 
@@ -248,7 +282,14 @@ class PiAmbientSynth:
         self.osc.weather(amount)
         if self.config.get("eink", {}).get("enabled", True):
             label = "clear" if amount > 0.66 else ("mist" if amount > 0.33 else "fog")
-            self.eink.show_status("idle", "Weather", label, f"{int(amount * 100)}%")
+            self.eink.show_status(
+                "idle",
+                "Weather",
+                label,
+                f"{int(amount * 100)}%",
+                config=self.config,
+                battery=self._battery_for_display(),
+            )
 
     def toggle_evolve(self) -> None:
         if not self._patch:
@@ -274,11 +315,40 @@ class PiAmbientSynth:
         else:
             self.eink.sleep()
 
+    def _maybe_refresh_battery_display(self) -> None:
+        ps = self.config.get("pisugar", {})
+        if not ps.get("enabled", False):
+            return
+        interval = float(ps.get("poll_seconds", 90))
+        now = time.monotonic()
+        if now - self._last_battery_poll < interval:
+            return
+        self._last_battery_poll = now
+        prev = self._battery_snapshot
+        snap = read_battery_snapshot(self.config)
+        if not snap.available:
+            return
+        self._battery_snapshot = snap
+        changed = (
+            prev is None
+            or prev.display_percent != snap.display_percent
+            or prev.charging != snap.charging
+        )
+        if not changed or not self._patch:
+            return
+        if self.play.active_notes and self.config.get("eink", {}).get(
+            "show_playing_note", True
+        ):
+            return
+        if self.config.get("eink", {}).get("enabled", True) and self.eink.available:
+            self._update_display(self._patch)
+
     def run(self) -> None:
         self.startup()
         logger.info("Pi Ambient Synth running — Ctrl+C to exit")
         try:
             while self._running:
+                self._maybe_refresh_battery_display()
                 time.sleep(0.25)
         except KeyboardInterrupt:
             pass

@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw, ImageFont
+
+from battery_display import overlay_battery
+
+if TYPE_CHECKING:
+    from pisugar_battery import BatterySnapshot
 
 
 # Visual phases (monochrome, high contrast for 2.13" panel)
@@ -51,6 +56,7 @@ class StatusDisplay:
         progress: float | None = None,
         step: int | None = None,
         total_steps: int | None = None,
+        battery: BatterySnapshot | None = None,
     ) -> Image.Image:
         w, h = self.width, self.height
         img = Image.new("1", (w, h), 1)
@@ -94,5 +100,8 @@ class StatusDisplay:
             cx = w - m - 8
             cy = m + 6
             draw.rectangle((cx, cy, cx + 6, cy + 6), outline=0, fill=0)
+
+        if battery is not None and battery.available:
+            overlay_battery(img, battery, margin=self.margin)
 
         return img

@@ -29,6 +29,7 @@ sys.path.insert(0, str(_src_dir()))
 
 from config_loader import load_config
 from eink_display import EInkDisplay
+from pisugar_battery import read_battery_snapshot
 from patch_generator import PatchGenerator
 from state_store import StateStore
 from status_display import StatusDisplay
@@ -67,8 +68,21 @@ def show_status(
     if not display.init():
         print("E-ink init failed — check SPI, gpiozero, vendor/waveshare", file=sys.stderr)
         return 1
+    battery = None
+    if config.get("pisugar", {}).get("show_on_display", True):
+        battery = read_battery_snapshot(config)
+        if not battery.available:
+            battery = None
     renderer = StatusDisplay(config)
-    img = renderer.render(phase, title, subtitle, detail, step=step, total_steps=total_steps)
+    img = renderer.render(
+        phase,
+        title,
+        subtitle,
+        detail,
+        step=step,
+        total_steps=total_steps,
+        battery=battery,
+    )
     full = os.environ.get("EINK_FORCE") == "1" or phase in (
         "boot",
         "wifi",

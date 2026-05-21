@@ -19,6 +19,7 @@ from midi_controller import midi_status_summary
 from network_info import network_snapshot
 from patch_generator import PatchGenerator
 from patch_resolve import resolve_current_patch
+from pisugar_battery import read_battery_snapshot
 from state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,17 @@ def _read_deploy_sha() -> tuple[str, str | None]:
     return "", None
 
 
+def _battery_status(config: dict[str, Any]) -> dict[str, Any]:
+    snap = read_battery_snapshot(config)
+    return {
+        "available": snap.available,
+        "percent": snap.display_percent,
+        "voltage_v": snap.voltage_v,
+        "charging": snap.charging,
+        "label": snap.label,
+    }
+
+
 def _read_marker_file(name: str) -> str | None:
     path = MARKER_DIR / name
     if not path.is_file():
@@ -252,6 +264,7 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
         "eink_log_path": str(_resolve_eink_log()),
         "eink_log_tail": _tail_file(_resolve_eink_log(), log_tail_lines),
         "last_eink_status": _read_marker_file("last_eink_status"),
+        "battery": _battery_status(config),
         "network_address": _read_marker_file("network-address.txt"),
         "journal_logs": journal_logs,
         "journal_errors": journal_errors,
@@ -382,6 +395,13 @@ def _html_page(status: dict[str, Any]) -> str:
     if net_addr:
         net_row = row("network-address.txt", net_addr.replace("\n", " · ")[:120])
 
+    bat = status.get("battery") or {}
+    if bat.get("available"):
+        bat_label = bat.get("label") or f"{bat.get('percent')}%"
+        bat_row = row("PiSugar battery", bat_label, ok=(bat.get("percent") or 0) > 15)
+    else:
+        bat_row = row("PiSugar battery", "unavailable (pisugar-server?)", ok=None)
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -420,6 +440,7 @@ def _html_page(status: dict[str, Any]) -> str:
     {row("MIDI inputs", midi_inputs)}
     {row("Current patch", patch_sum)}
     {row("Deploy SHA", sha)}
+    {bat_row}
     {net_row}
     {svc_rows}
     {detail_rows}

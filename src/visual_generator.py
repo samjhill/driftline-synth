@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from battery_display import overlay_battery
 from patch_model import Patch
+
+if TYPE_CHECKING:
+    from pisugar_battery import BatterySnapshot
 
 SCALE_GEOMETRY = {
     "Dorian": 0,
@@ -40,7 +44,9 @@ class VisualGenerator:
         self.include_patch_name = visual.get("include_patch_name", True)
         self.include_scale_name = visual.get("include_scale_name", True)
 
-    def render_patch(self, patch: Patch) -> Image.Image:
+    def render_patch(
+        self, patch: Patch, battery: BatterySnapshot | None = None
+    ) -> Image.Image:
         rng = _seed_rng(patch.seed, "visual")
         w, h = self.width, self.height
         img = Image.new("1", (w, h), 1)
@@ -75,6 +81,9 @@ class VisualGenerator:
         self._draw_erosion_paths(draw, rng, w, h, m)
         self._draw_glyph(draw, rng, patch, w, h)
         self._draw_labels(draw, patch, w, h)
+
+        if battery is not None and battery.available:
+            overlay_battery(img, battery, margin=self.margin)
 
         return img
 

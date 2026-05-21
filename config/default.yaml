@@ -40,6 +40,15 @@ patch:
   reseed_mode: "curated"
   default_scale_family: "ambient_modal"
 
+pisugar:
+  enabled: true
+  socket_path: "/tmp/pisugar-server.sock"
+  tcp_host: "127.0.0.1"
+  tcp_port: 8423
+  command_timeout_seconds: 2.0
+  poll_seconds: 90
+  show_on_display: true
+
 eink:
   enabled: true
   width: 250

@@ -173,13 +173,24 @@ class EInkDisplay:
         title: str,
         subtitle: str = "",
         detail: str = "",
+        *,
+        config: dict[str, Any] | None = None,
+        battery=None,
     ) -> None:
         from status_display import StatusDisplay
+
+        if battery is None and config is not None:
+            from pisugar_battery import read_battery_snapshot
+
+            if config.get("pisugar", {}).get("show_on_display", True):
+                battery = read_battery_snapshot(config)
 
         renderer = StatusDisplay(
             {"eink": {"width": self.width, "height": self.height}}
         )
-        self.show_image(renderer.render(phase, title, subtitle, detail))
+        self.show_image(
+            renderer.render(phase, title, subtitle, detail, battery=battery)
+        )
         logger.info("Status display: %s — %s", phase, title)
 
     def clear(self) -> None:
