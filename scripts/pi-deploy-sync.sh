@@ -17,7 +17,8 @@ LOG_FILE="/var/log/pi-ambient-synth-deploy.log"
 DEPLOY_CONF_NAME="deploy/deploy.conf"
 EINK_STATUS_FILE="$MARKER_DIR/last_eink_status"
 
-log() { echo "$(date -Iseconds) [$LOG_TAG] $*" | tee -a "$LOG_FILE"; }
+# stderr only — stdout is used for SHA/command results (must not mix with log lines).
+log() { echo "$(date -Iseconds) [$LOG_TAG] $*" | tee -a "$LOG_FILE" >&2; }
 
 eink_status() {
   local phase="$1" title="$2" subtitle="${3:-}" detail="${4:-}"
@@ -140,6 +141,10 @@ installed_sha() {
   [[ -f "$INSTALL_DIR/.deploy_sha" ]] && cat "$INSTALL_DIR/.deploy_sha" || echo ""
 }
 
+is_valid_git_sha() {
+  [[ "$1" =~ ^[0-9a-f]{7,40}$ ]]
+}
+
 is_placeholder_sha() {
   case "$1" in
     "" | boot | boot-sd | latest) return 0 ;;
@@ -196,6 +201,10 @@ rsync_from_boot() {
 
 fetch_github() {
   local repo="$1" sha="$2"
+  if ! is_valid_git_sha "$sha"; then
+    log "ERROR: refusing fetch — invalid sha: ${sha:0:80}"
+    return 1
+  fi
   local url="https://github.com/${repo}/archive/${sha}.tar.gz"
   local tmp
   tmp="$(mktemp -d)"
@@ -307,7 +316,9 @@ resolve_target_sha() {
       return 1
     fi
     wait_for_network || log "WARN: network not ready"
-    resolve_github_sha "${GITHUB_REPO}" "${GITHUB_BRANCH:-main}"
+    local sha
+    sha="$(resolve_github_sha "${GITHUB_REPO}" "${GITHUB_BRANCH:-main}")" || return 1
+    echo "$sha"
     return 0
   fi
   echo "$configured"
@@ -359,9 +370,14 @@ do_deploy() {
       return 1
     fi
   fi
+  if [[ "${DEPLOY_SOURCE:-github}" == "github" && "${target_sha}" != "boot-sd" ]] && ! is_valid_git_sha "$target_sha"; then
+    log "ERROR: invalid GitHub SHA (got: ${target_sha:0:60}...)"
+    eink_status failed "Bad deploy SHA" "" "see deploy log"
+    return 1
+  fi
   short_sha="${target_sha:0:7}"
 
-  log "Mode=$MODE source=${DEPLOY_SOURCE:-github} auto_pull=${AUTO_PULL:-0} remote=$short_sha installed=${current_sha:0:7}"
+  log "Mode=$MODE source=${DEPLOY_SOURCE:-github} auto_pull=${AUTO_PULL:-0} remote_sha=$short_sha installed=${current_sha:0:7}"
 
   if is_placeholder_sha "$current_sha" && ! is_placeholder_sha "$target_sha"; then
     write_installed_sha "$target_sha"
