@@ -52,18 +52,18 @@ patchParams[\root_note] = 48;
 };
 
 port = 57120;
-"Pi Ambient Synth engine script loading (build osc-always)".postln;
+"Pi Ambient Synth engine script loading (build no-wait-boot)".postln;
 "Booting Pi Ambient Synth engine...".postln;
 s = Server.local;
 ~audioDevice = ~configureServerAudio.(s);
-if(s.serverRunning, { s.quit; 1.wait });
-if(s.serverRunning.not, {
+// Do not use N.wait here — sclang .scd on main thread is not a Routine (yield error on Pi).
+if(s.booted, { s.quit; s.sync });
+if(s.booted.not, {
 	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
 	s.boot(~audioDevice);
-	3.wait;
 });
 s.sync;
-if(s.serverRunning.not, {
+if(s.booted.not, {
 	"ERROR: scsynth failed to start — check: which scsynth, aplay -l, SC_AUDIO_DEVICE".postln;
 }, {
 	("scsynth running — device: %, out ch: %".format(
@@ -293,7 +293,7 @@ SynthDef(\piLimiter, { |in=0, out=0, level=0.9|
 		};
 };
 
-if(s.serverRunning, {
+if(s.booted, {
 	~morphBuses = IdentityDictionary.new;
 	synthGroup = Group.tail(s);
 
@@ -303,7 +303,7 @@ if(s.serverRunning, {
 	textureSynth = Synth.tail(synthGroup, \piTextureDrone, [\root, 48, \density, 0.5, \amp, masterVol * 1.35]);
 	"Engine synths started (texture drone + FX chain)".postln;
 }, {
-	"WARN: scsynth not running — OSC registered but notes will not sound".postln;
+	"WARN: scsynth not booted — OSC registered but notes will not sound".postln;
 });
 
 OSCdef(\piNoteOn, { |msg|
@@ -430,7 +430,7 @@ OSCdef(\piMorphTime, { |msg|
 OSCdef(\piTestBeep, { |msg|
 	var freq = msg[1] ?? 440;
 	var amp = msg[2] ?? 0.55;
-	if(s.serverRunning.not, {
+	if(s.booted.not, {
 		"pi_test_beep: scsynth not running".postln;
 	}, {
 		Synth(\piAmbientVoice, [
@@ -445,11 +445,13 @@ OSCdef(\piTestBeep, { |msg|
 NetAddr.localAddr.port = port;
 "Pi Ambient Synth listening on OSC port %".format(port).postln;
 
-// Block the main sclang thread so systemd Type=simple stays active (skip when SC_ENGINE_TEST=1).
-if(getenv("SC_ENGINE_TEST").notNil, {
-	"Pi Ambient Synth ENGINE_TEST ok".postln;
-	0.exit;
-}, {
-	while { true } { 1.wait };
-});
+// Keep sclang alive for systemd: fork + block main on thread end (no N.wait on main thread).
+fork {
+	if(getenv("SC_ENGINE_TEST").notNil, {
+		"Pi Ambient Synth ENGINE_TEST ok".postln;
+		0.exit;
+	}, {
+		loop { 1.wait };
+	});
+}.threadTerminateCondition.wait;
 )

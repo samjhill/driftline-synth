@@ -23,7 +23,8 @@ On Linux (or CI), also run:
 
 - Short-circuit AND: `companionOn and: { ... }` — not `and {`
 - Defaults: `msg[1] ?? 120` — not `msg[1] ? msg[1] : 120`
-- Close `if(s.serverRunning, { ... });` with `});` — not `};` alone before the main-loop / test exit
+- Close `if(s.booted, { ... });` with `});` — not `};` alone before the keepalive fork
+- Never `N.wait` on the main boot path — use `s.sync` and `s.booted` (Pi errors: yield outside Routine)
 
 ## Deploy note
 
