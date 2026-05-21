@@ -112,7 +112,7 @@ if(useAlsaSynth, {
 		0.5.wait;
 	});
 	"Starting scsynth with ALSA device: %".format(~audioDevice).postln;
-	s.boot(~audioDevice);
+	s.boot;
 	s.sync;
 	bootOk = (s.serverRunning == true);
 });

@@ -26,8 +26,13 @@ sudo mkdir -p /etc/systemd/system/supercollider.service.d
 sudo tee /etc/systemd/system/supercollider.service.d/audio.conf >/dev/null <<'EOF'
 [Service]
 LimitMEMLOCK=infinity
-Environment=SC_SCLANG_OWNS_AUDIO=1
+Environment=JACK_NO_START_SERVER=1
+Environment=JACK_NO_AUDIO_RESERVATION=1
+Environment=SC_HEADLESS_ALSA=1
 Environment=SC_AUDIO_DEVICE=plughw:0,0
+Environment=SC_JACK_DEVICE=plughw:0,0
+Environment=SC_JACK_PERIOD=4096
+Environment=SC_JACK_NPERIODS=3
 Environment=PI_SKIP_TEXTURE_DRONE=1
 EOF
 

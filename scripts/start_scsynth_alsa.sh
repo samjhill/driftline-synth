@@ -37,11 +37,11 @@ alsa_candidates() {
 }
 
 jack_candidates() {
-  local base="${SC_JACK_DEVICE:-${SC_AUDIO_DEVICE:-hw:0,0}}"
+  local base="${SC_JACK_DEVICE:-${SC_AUDIO_DEVICE:-plughw:0,0}}"
   case "$base" in
-    hw:0,0 | plughw:0,0) echo "hw:0,0" ;;
-    hw:0) echo "hw:0" ;;
-    *) echo "$(jack_alsa_dev "$base")" ;;
+    hw:0,0 | plughw:0,0) printf '%s\n' "plughw:0,0" "hw:0,0" ;;
+    hw:0 | plughw:0) printf '%s\n' "plughw:0" "hw:0" ;;
+    *) printf '%s\n' "$base" ;;
   esac
 }
 
