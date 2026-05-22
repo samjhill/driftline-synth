@@ -36,6 +36,8 @@ def test_feedback_capped_low():
         "max_delay1_feedback": 0.05,
         "max_delay2_feedback": 0.04,
         "max_filter_feedback": 0.03,
+        "min_noise_level": 0.14,
+        "max_noise_level": 0.22,
     }
     d1, d2, fb = _feedback_levels(patch, cfg)
     assert d1 <= 0.05

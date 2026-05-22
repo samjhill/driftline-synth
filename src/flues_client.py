@@ -126,14 +126,20 @@ def apply_keyboard_voice(
     release = p.release if p else 2.2
     d1_fb, d2_fb, filt_fb = _feedback_levels(p, cfg)
 
+    # Program 5 needs noise excitation (Noise → Interface). Too low = silent keys.
+    noise_min = float(cfg.get("min_noise_level", 0.14))
+    noise_max = float(cfg.get("max_noise_level", 0.22))
     if p:
-        intensity = max(0.22, min(0.42, 0.48 - p.brightness * 0.35))
-        noise = min(float(cfg.get("max_noise_level", 0.05)), p.noise_level * 0.5)
-        filt_hz = max(400.0, min(3200.0, p.filter_cutoff * 0.85))
+        intensity = max(0.32, min(0.52, 0.55 - p.brightness * 0.28))
+        noise = max(
+            noise_min,
+            min(noise_max, noise_min + p.noise_level * (noise_max - noise_min)),
+        )
+        filt_hz = max(500.0, min(3200.0, p.filter_cutoff * 0.9))
         filt_q = min(0.35, p.filter_resonance * 0.4)
     else:
-        intensity = 0.32
-        noise = 0.03
+        intensity = 0.4
+        noise = noise_min
         filt_hz = 1200.0
         filt_q = 0.15
 

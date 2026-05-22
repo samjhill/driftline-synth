@@ -67,7 +67,8 @@ flues:
   max_delay1_feedback: 0.05
   max_delay2_feedback: 0.04
   max_filter_feedback: 0.03
-  max_noise_level: 0.05
+  min_noise_level: 0.14
+  max_noise_level: 0.22
 
 patch:
   seed: null
