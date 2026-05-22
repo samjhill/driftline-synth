@@ -14,6 +14,10 @@ import os
 import sys
 from pathlib import Path
 
+# Before gpiozero/waveshare: Pi production uses lgpio; wrong factory → GPIO busy.
+os.environ.setdefault("GPIOZERO_PIN_FACTORY", "lgpio")
+os.environ.setdefault("HOME", "/home/pi")
+
 
 def _src_dir() -> Path:
     for candidate in (
@@ -29,6 +33,7 @@ sys.path.insert(0, str(_src_dir()))
 
 from config_loader import load_config
 from eink_display import EInkDisplay
+from eink_lock import eink_exclusive_lock
 from pisugar_battery import read_battery_snapshot
 from status_display import StatusDisplay
 
@@ -71,31 +76,39 @@ def show_status(
         handlers=handlers,
         force=True,
     )
-    display = EInkDisplay(config)
-    if not display.init():
-        display.release()
-        print("E-ink init failed — check SPI, gpiozero, vendor/waveshare", file=sys.stderr)
-        return 1
-    battery = None
-    if config.get("pisugar", {}).get("show_on_display", True):
-        battery = read_battery_snapshot(config)
-        if not battery.available:
-            battery = None
-    renderer = StatusDisplay(config)
-    img = renderer.render(
-        phase,
-        title,
-        subtitle,
-        detail,
-        step=step,
-        total_steps=total_steps,
-        battery=battery,
-    )
-    full = os.environ.get("EINK_FORCE") == "1" or phase in ("boot", "failed")
     try:
-        display.show_image(img, full_refresh=full)
-    finally:
-        display.release()
+        with eink_exclusive_lock():
+            display = EInkDisplay(config)
+            if not display.init():
+                display.release()
+                print(
+                    "E-ink init failed — check SPI, gpiozero, vendor/waveshare",
+                    file=sys.stderr,
+                )
+                return 1
+            battery = None
+            if config.get("pisugar", {}).get("show_on_display", True):
+                battery = read_battery_snapshot(config)
+                if not battery.available:
+                    battery = None
+            renderer = StatusDisplay(config)
+            img = renderer.render(
+                phase,
+                title,
+                subtitle,
+                detail,
+                step=step,
+                total_steps=total_steps,
+                battery=battery,
+            )
+            full = os.environ.get("EINK_FORCE") == "1" or phase in ("boot", "failed")
+            try:
+                display.show_image(img, full_refresh=full)
+            finally:
+                display.release()
+    except TimeoutError as e:
+        print(str(e), file=sys.stderr)
+        return 1
     return 0
 
 
@@ -130,32 +143,36 @@ def restore_patch() -> int:
     patch = store.load_current()
     if not patch:
         patch = PatchGenerator(config).generate()
-    display = EInkDisplay(config)
-    if not display.init():
-        display.release()
-        return 1
-    battery = None
-    if config.get("pisugar", {}).get("show_on_display", True):
-        battery = read_battery_snapshot(config)
-        if not battery.available:
-            battery = None
-    if _skip_numpy_sigil(config):
-        renderer = StatusDisplay(config)
-        img = renderer.render(
-            "playing",
-            patch.name[:28],
-            patch.scale_name[:28],
-            f"seed {patch.seed}",
-            battery=battery,
-        )
-    else:
-        from visual_generator import VisualGenerator
-
-        img = VisualGenerator(config).render_patch(patch, battery=battery)
     try:
-        display.show_image(img, full_refresh=False)
-    finally:
-        display.release()
+        with eink_exclusive_lock():
+            display = EInkDisplay(config)
+            if not display.init():
+                display.release()
+                return 1
+            battery = None
+            if config.get("pisugar", {}).get("show_on_display", True):
+                battery = read_battery_snapshot(config)
+                if not battery.available:
+                    battery = None
+            if _skip_numpy_sigil(config):
+                renderer = StatusDisplay(config)
+                img = renderer.render(
+                    "playing",
+                    patch.name[:28],
+                    patch.scale_name[:28],
+                    f"seed {patch.seed}",
+                    battery=battery,
+                )
+            else:
+                from visual_generator import VisualGenerator
+
+                img = VisualGenerator(config).render_patch(patch, battery=battery)
+            try:
+                display.show_image(img, full_refresh=full)
+            finally:
+                display.release()
+    except TimeoutError:
+        return 1
     return 0
 
 
