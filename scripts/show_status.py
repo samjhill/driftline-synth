@@ -168,7 +168,7 @@ def restore_patch() -> int:
 
                 img = VisualGenerator(config).render_patch(patch, battery=battery)
             try:
-                display.show_image(img, full_refresh=full)
+                display.show_image(img, full_refresh=False)
             finally:
                 display.release()
     except TimeoutError:
