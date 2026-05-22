@@ -62,13 +62,14 @@ audio:
   default_volume: 0.85
   patch_morph_seconds: 6.0
 
-# Flues program 5: CC 73/72 are delay feedback (echo), not mix sends — keep low.
+# Flues KeyStep voice: formant (pitched pad) by default; physical = PM program 5.
 flues:
-  max_delay1_feedback: 0.05
-  max_delay2_feedback: 0.04
-  max_filter_feedback: 0.03
-  min_noise_level: 0.14
-  max_noise_level: 0.22
+  keyboard_program: formant  # formant | physical | auto
+  max_delay1_feedback: 0.04
+  max_delay2_feedback: 0.03
+  max_filter_feedback: 0.02
+  min_noise_level: 0.05
+  max_noise_level: 0.10
 
 patch:
   seed: null

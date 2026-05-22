@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from patch_model import Patch
-from flues_client import _feedback_levels, _f_to_cc
+from flues_client import _feedback_levels, _f_to_cc, keyboard_program, PROGRAM_FORMANT
 
 
 def test_feedback_capped_low():
@@ -33,14 +33,19 @@ def test_feedback_capped_low():
         brightness=0.6,
     )
     cfg = {
-        "max_delay1_feedback": 0.05,
-        "max_delay2_feedback": 0.04,
-        "max_filter_feedback": 0.03,
-        "min_noise_level": 0.14,
-        "max_noise_level": 0.22,
+        "max_delay1_feedback": 0.04,
+        "max_delay2_feedback": 0.03,
+        "max_filter_feedback": 0.02,
+        "min_noise_level": 0.05,
+        "max_noise_level": 0.10,
     }
     d1, d2, fb = _feedback_levels(patch, cfg)
     assert d1 <= 0.05
     assert d2 <= 0.04
     assert fb <= 0.03
     assert _f_to_cc(d1) < 20  # well below default 0.2 → ~25 CC
+
+
+def test_default_keyboard_program_is_formant():
+    assert keyboard_program(None, {}) == PROGRAM_FORMANT
+    assert keyboard_program(None, {"keyboard_program": "formant"}) == PROGRAM_FORMANT
