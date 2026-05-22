@@ -108,11 +108,6 @@ def _flues_cfg(config: dict[str, Any] | None) -> dict[str, Any]:
     return config.get("flues", {})
 
 
-def _toggle_feedback_off(port: mido.ports.BaseOutput) -> None:
-    """Flues control note 38 toggles delay/filter feedback loop (see flues midi.md)."""
-    port.send(mido.Message("note_on", note=38, velocity=127, channel=FLUES_CH))
-
-
 def keyboard_program(patch: Patch | None, cfg: dict[str, Any]) -> int:
     """Which Flues program to use for KeyStep notes."""
     mode = str(cfg.get("keyboard_program", "physical")).lower()
@@ -127,14 +122,15 @@ def keyboard_program(patch: Patch | None, cfg: dict[str, Any]) -> int:
 
 
 def _feedback_levels(patch: Patch | None, cfg: dict[str, Any]) -> tuple[float, float, float]:
-    max_d1 = float(cfg.get("max_delay1_feedback", 0.04))
-    max_d2 = float(cfg.get("max_delay2_feedback", 0.03))
-    max_filt = float(cfg.get("max_filter_feedback", 0.02))
+    """Near-dry — feedback loops read as constant hiss on Pi headphones."""
+    max_d1 = float(cfg.get("max_delay1_feedback", 0.012))
+    max_d2 = float(cfg.get("max_delay2_feedback", 0.01))
+    max_filt = float(cfg.get("max_filter_feedback", 0.008))
     if not patch:
-        return max_d1 * 0.4, max_d2 * 0.4, max_filt * 0.4
-    d1 = min(max_d1, 0.01 + patch.delay_mix * max_d1)
-    d2 = min(max_d2, 0.01 + patch.reverb_mix * max_d2)
-    filt = min(max_filt, patch.filter_resonance * max_filt * 0.35)
+        return max_d1 * 0.5, max_d2 * 0.5, max_filt * 0.5
+    d1 = min(max_d1, 0.004 + patch.delay_mix * max_d1)
+    d2 = min(max_d2, 0.004 + patch.reverb_mix * max_d2)
+    filt = min(max_filt, patch.filter_resonance * max_filt * 0.25)
     return d1, d2, filt
 
 
@@ -161,8 +157,8 @@ def _apply_formant_voice(
         f3 = 2000.0 + p.brightness * 500.0
         f4 = 3000.0 + p.brightness * 400.0
         noise = min(
-            float(cfg.get("max_noise_level", 0.1)),
-            float(cfg.get("min_noise_level", 0.05)) + p.noise_level * 0.05,
+            float(cfg.get("max_noise_level", 0.06)),
+            float(cfg.get("min_noise_level", 0.03)) + p.noise_level * 0.03,
         )
         attack = max(p.attack, 0.04)
         release = max(p.release, 0.8)
@@ -207,21 +203,22 @@ def _apply_physical_voice(
     release = p.release if p else 1.8
     d1_fb, d2_fb, filt_fb = _feedback_levels(p, cfg)
 
-    noise_min = float(cfg.get("min_noise_level", 0.09))
-    noise_max = float(cfg.get("max_noise_level", 0.13))
+    # PM idle hiss = noise exciter level; keep low, push pitch via interface intensity.
+    noise_min = float(cfg.get("min_noise_level", 0.035))
+    noise_max = float(cfg.get("max_noise_level", 0.055))
     if p:
-        intensity = max(0.50, min(0.65, 0.62 - p.brightness * 0.12))
+        intensity = max(0.55, min(0.72, 0.68 - p.brightness * 0.1))
         noise = max(
             noise_min,
-            min(noise_max, noise_min + p.noise_level * (noise_max - noise_min)),
+            min(noise_max, noise_min + p.noise_level * (noise_max - noise_min) * 0.6),
         )
-        filt_hz = max(600.0, min(4000.0, p.filter_cutoff))
-        filt_q = min(0.3, p.filter_resonance * 0.35)
+        filt_hz = max(500.0, min(2200.0, p.filter_cutoff * 0.75))
+        filt_q = min(0.22, p.filter_resonance * 0.28)
     else:
-        intensity = 0.52
+        intensity = 0.6
         noise = noise_min
-        filt_hz = 1400.0
-        filt_q = 0.12
+        filt_hz = 1100.0
+        filt_q = 0.1
 
     targets: list[tuple[int, int]] = [
         (PM_INTERFACE, _interface_cc(iface)),
@@ -236,11 +233,10 @@ def _apply_physical_voice(
         (CC_NOISE_LEVEL, _f_to_cc(noise)),
         (CC_FILTER_FREQ, _hz_to_cc(filt_hz, 80.0, 8000.0)),
         (CC_FILTER_Q, _f_to_cc(filt_q, 0.1, 2.0)),
-        (CC_FILTER_SHAPE, _f_to_cc(0.2)),
+        (CC_FILTER_SHAPE, _f_to_cc(0.12)),
     ]
     for cc, val in targets:
         _cc(port, cc, val)
-    _toggle_feedback_off(port)
     logger.info(
         "Flues PM voice: iface=%s intensity=%.2f noise=%.3f d1_fb=%.3f patch=%s",
         iface,

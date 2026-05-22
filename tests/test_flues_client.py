@@ -40,16 +40,16 @@ def test_feedback_capped_low():
         brightness=0.6,
     )
     cfg = {
-        "max_delay1_feedback": 0.04,
-        "max_delay2_feedback": 0.03,
-        "max_filter_feedback": 0.02,
-        "min_noise_level": 0.05,
-        "max_noise_level": 0.10,
+        "max_delay1_feedback": 0.012,
+        "max_delay2_feedback": 0.01,
+        "max_filter_feedback": 0.008,
+        "min_noise_level": 0.035,
+        "max_noise_level": 0.055,
     }
     d1, d2, fb = _feedback_levels(patch, cfg)
-    assert d1 <= 0.05
-    assert d2 <= 0.04
-    assert fb <= 0.03
+    assert d1 <= 0.012
+    assert d2 <= 0.01
+    assert fb <= 0.008
     assert _f_to_cc(d1) < 20  # well below default 0.2 → ~25 CC
 
 
