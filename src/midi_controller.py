@@ -52,6 +52,8 @@ class MidiController:
         self._velocity_floor = int(midi.get("velocity_floor", 72))
         self._shift_cc = midi.get("shift_cc", 63)
         self._shift_threshold = midi.get("shift_cc_threshold", 64)
+        # KeyStep Play/Pause is one button: sends start when playing, stop when pausing.
+        self._reseed_on_shift_stop = bool(midi.get("reseed_on_shift_stop", False))
         transport_cc = midi.get("transport_cc", {})
         self._transport_cc: dict[int, str] = dict(TRANSPORT_CC)
         for event, cc in transport_cc.items():
@@ -211,6 +213,11 @@ class MidiController:
             if self._shift_held and self.on_freeze_requested:
                 logger.info("SHIFT+STOP → freeze/favorite")
                 self.on_freeze_requested()
+            elif self._shift_held and self.on_reseed_requested and (
+                self._reseed_on_shift_stop or self.on_freeze_requested is None
+            ):
+                logger.info("SHIFT+PAUSE/STOP (MIDI %s) → reseed", msg.type)
+                self.on_reseed_requested()
             elif self.on_transport:
                 self.on_transport("stop")
         elif msg.type == "clock":
@@ -382,6 +389,21 @@ def save_midi_status(
         return None
 
 
+def _midi_bridge_service_active() -> bool:
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["systemctl", "is-active", "pi-ambient-synth-midi.service"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return (out.stdout or "").strip() == "active"
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def midi_status_summary(config: dict[str, Any]) -> dict[str, Any]:
     """Hardware scan plus optional synth marker for monitor UI."""
     marker_dir = config.get("app", {}).get("marker_dir", "/var/lib/pi-ambient-synth")
@@ -401,12 +423,21 @@ def midi_status_summary(config: dict[str, Any]) -> dict[str, Any]:
             "scan_error": str(e),
         }
     label, ok = _midi_status_label(snap, synth)
+    if ok is not True and _midi_bridge_service_active():
+        port = (synth or {}).get("port_name") or snap.get("selected_port") or "KeyStep"
+        label = f"Connected — {port} (MIDI bridge)"
+        ok = True
     return {**snap, "synth": synth, "label": label, "ok": ok}
 
 
 def _midi_status_label(
     snap: dict[str, Any], synth: dict[str, Any] | None
 ) -> tuple[str, bool | None]:
+    if synth and synth.get("state") == "midi-bridge":
+        # Legacy marker from main.py before PI_NO_MIDI stopped overwriting the file.
+        if snap.get("preferred_found") or snap.get("selected_port"):
+            port = snap.get("selected_port") or "?"
+            return f"Bridge mode — {port} (see pi-ambient-synth-midi)", None
     if synth and synth.get("listening"):
         port = synth.get("port_name") or snap.get("selected_port") or "MIDI"
         return f"Connected — {port}", True

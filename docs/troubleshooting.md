@@ -123,7 +123,7 @@ cd ~/pi-ambient-synth
 
 9. **Sound tab “Test note” silent but journal shows `playNote`** — JACK may have dropped `SuperCollider:out → system:playback`. Run `~/pi-ambient-synth/scripts/ensure_jack_playback.sh`, raise headphone PCM (`amixer -c 0 set PCM 95%`), and use the updated **Test note** button (plays a loud beep + C4 and sets master volume to 100%).
 
-10. **SHIFT+PLAY does nothing** — KeyStep usually sends **MIDI Start** (`0xFA`), not CC 102. Recent builds handle `start`/`stop` realtime messages. Hold **Shift** (often CC 63 ≥ 64), press **Play**, and check `journalctl -u pi-ambient-synth -f` for `SHIFT+PLAY (MIDI start) → reseed`. Debug: `systemctl edit pi-ambient-synth` → add `ExecStart=.../main.py --debug-midi` temporarily.
+10. **SHIFT+PLAY does nothing** — KeyStep usually sends **MIDI Start** (`0xFA`), not CC 102. The **Play/Pause** button toggles: **Play** sends `start`, **Pause** sends `stop`. On the Flues path (`pi-ambient-synth-midi`), both trigger reseed when Shift is held (`midi.reseed_on_shift_stop: true`). Hold **Shift** (CC 63 ≥ 64), press **Play/Pause**, and check `journalctl -u pi-ambient-synth-midi -f` for `SHIFT+PLAY` or `SHIFT+PAUSE/STOP → reseed`. Debug: stop the bridge and run `python scripts/pi_midi_listen.py 15` while pressing Shift+Play/Pause.
 
 11. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
 

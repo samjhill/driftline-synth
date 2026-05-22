@@ -70,9 +70,20 @@ if [[ -f /etc/pi-ambient-synth/audio-mode.conf ]] \
     echo "WARN: pi-ambient-synth-midi not active — KeyStep/reseed may not work" >&2
     journalctl -u pi-ambient-synth-midi -n 15 --no-pager >&2 || true
   fi
+  if [[ -x "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" ]]; then
+    for _ in 1 2 3 4 5; do
+      "$INSTALL_DIR/scripts/connect_midi_to_flues.sh" && break
+      sleep 1
+    done
+  fi
   log "start pi-ambient-synth (monitor/e-ink; no SC required)"
   sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
   sleep 3
+  if [[ -x "$INSTALL_DIR/.venv/bin/python" && -f "$INSTALL_DIR/scripts/show_status.py" ]]; then
+    sudo -u pi env HOME=/home/pi PYTHONPATH="$INSTALL_DIR/src" \
+      "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/scripts/show_status.py" --restore-patch \
+      >>/var/log/pi-ambient-synth-eink.log 2>&1 || true
+  fi
   if ! systemctl is-active --quiet pi-flues-synth.service; then
     echo "ERROR: pi-flues-synth stopped after starting pi-ambient-synth (check Requires/Conflicts)" >&2
     journalctl -u pi-flues-synth -n 15 --no-pager >&2 || true

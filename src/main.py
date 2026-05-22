@@ -149,13 +149,14 @@ class PiAmbientSynth:
                 battery=self._battery_for_display(),
             )
         self._patch = self._resolve_patch()
-        save_midi_status(
-            self.config,
-            connected=False,
-            port_name=None,
-            listening=False,
-            state="starting",
-        )
+        if os.environ.get("PI_NO_MIDI", "").strip() not in ("1", "true", "yes"):
+            save_midi_status(
+                self.config,
+                connected=False,
+                port_name=None,
+                listening=False,
+                state="starting",
+            )
         self._wait_for_sc_engine()
         self.osc.send_patch(self._patch)
         self._update_display(self._patch)
@@ -163,13 +164,7 @@ class PiAmbientSynth:
             logger.info(
                 "MIDI disabled in this process (use pi-ambient-synth-midi.service / pi_midi_bridge.py)"
             )
-            save_midi_status(
-                self.config,
-                connected=False,
-                port_name=None,
-                listening=False,
-                state="midi-bridge",
-            )
+            # Do not overwrite midi-status.json — pi_midi_bridge owns that marker.
         else:
             assert self.midi is not None
             self._wire_midi()
@@ -399,7 +394,8 @@ class PiAmbientSynth:
         self._running = False
         if self.midi is not None:
             self.midi.stop()
-        save_midi_status(self.config, connected=False, port_name=None, listening=False)
+        if os.environ.get("PI_NO_MIDI", "").strip() not in ("1", "true", "yes"):
+            save_midi_status(self.config, connected=False, port_name=None, listening=False)
         if self._no_eink or not self.config.get("eink", {}).get("enabled", True):
             return
         if self.config.get("eink", {}).get("clear_on_shutdown", False):

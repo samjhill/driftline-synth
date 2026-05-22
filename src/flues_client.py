@@ -94,8 +94,8 @@ def apply_keyboard_voice(port: mido.ports.BaseOutput, patch: Patch | None = None
 
     targets: list[tuple[int, int]] = [
         (24, _interface_cc(iface)),
-        (1, _f_to_cc(0.62)),
-        (7, _f_to_cc(0.96)),
+        (1, _f_to_cc(0.72)),
+        (7, _f_to_cc(1.0)),
         (20, _f_to_cc(0.08 if p else 0.1, 0.0, 0.25)),
         (73, _f_to_cc(max(attack, 0.05), 0.02, 0.6)),
         (72, _f_to_cc(max(release, 0.4), 0.2, 3.0)),
@@ -124,8 +124,8 @@ def apply_patch(port: mido.ports.BaseOutput, patch: Patch, *, morph_steps: int =
     semi = max(-12, min(12, patch.root_note - 48))
     targets: list[tuple[int, int]] = [
         (24, _interface_cc(iface)),
-        (7, _f_to_cc(0.96)),
-        (1, _f_to_cc(0.62)),
+        (7, _f_to_cc(1.0)),
+        (1, _f_to_cc(0.72)),
         (73, _f_to_cc(max(patch.attack, 0.05), 0.02, 0.6)),
         (72, _f_to_cc(max(patch.release, 0.4), 0.2, 3.0)),
         (32, _hz_to_cc(patch.filter_cutoff, 200, 8000)),

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Link KeyStep (via pi-ambient-synth-midi rtmidi port) → Flues-Synth ALSA MIDI input.
+# Route KeyStep only through pi-ambient-synth-midi (RtMidiOut) → Flues-Synth.
+# Do not wire KeyStep straight to Flues — duplicate note streams break arpeggiation.
 set -euo pipefail
 
 log() { echo "$(date -Iseconds) [aconnect-flues] $*"; }
@@ -7,28 +8,67 @@ log() { echo "$(date -Iseconds) [aconnect-flues] $*"; }
 command -v aconnect >/dev/null || { log "SKIP: aconnect missing"; exit 0; }
 pgrep -x flues-synth >/dev/null || { log "SKIP: flues-synth not running"; exit 0; }
 
-# Prefer KeyStep / bridge client as source; Flues as destination.
-src="$(aconnect -l 2>/dev/null | awk '
-  /client [0-9]+:.*(KeyStep|Ambient|rtmidi|Midi Through)/ { client=$2; gsub(":", "", client); port=client; in_client=1; next }
-  in_client && /0 / { print client ":0"; in_client=0 }
-' | head -1)"
-dst="$(aconnect -l 2>/dev/null | awk '
+list="$(aconnect -l 2>/dev/null || true)"
+if [[ -z "$list" ]]; then
+  log "WARN: aconnect -l empty"
+  exit 0
+fi
+
+dst="$(printf '%s\n' "$list" | awk '
   /client [0-9]+:.*[Ff]lues/ { client=$2; gsub(":", "", client); print client ":0"; exit }
+')"
+bridge="$(printf '%s\n' "$list" | awk '
+  /client [0-9]+:.*RtMidiOut/ { client=$2; gsub(":", "", client); print client ":0"; exit }
 ')"
 
 if [[ -z "$dst" ]]; then
-  dst="$(aconnect -l 2>/dev/null | grep -i flues | head -1 | sed -n 's/.*\([0-9][0-9]*\):.*/\1:0/p')"
-fi
-
-if [[ -z "$src" || -z "$dst" ]]; then
-  log "WARN: could not find MIDI ports (src=${src:-?} dst=${dst:-?})"
-  aconnect -l 2>/dev/null | head -30 || true
+  log "WARN: Flues MIDI In not found"
+  printf '%s\n' "$list" | head -25 || true
   exit 0
 fi
 
-if aconnect -l 2>/dev/null | grep -q "${src}.*${dst}"; then
-  log "already connected $src → $dst"
+if [[ -z "$bridge" ]]; then
+  log "WARN: MIDI bridge RtMidiOut not up yet (pi-ambient-synth-midi?)"
   exit 0
 fi
 
-aconnect "$src" "$dst" 2>/dev/null && log "connected $src → $dst" || log "WARN: aconnect failed $src → $dst"
+# Disconnect anything except the bridge from Flues (KeyStep direct, Midi Through, etc.).
+while IFS= read -r src; do
+  [[ -z "$src" || "$src" == "$bridge" ]] && continue
+  if aconnect -d "$src" "$dst" 2>/dev/null; then
+    log "disconnected $src → $dst"
+  fi
+done < <(
+  printf '%s\n' "$list" | awk -v dst="$dst" -v bridge="$bridge" '
+    $0 ~ /^[[:space:]]*Connected From:/ {
+      for (i = 3; i <= NF; i++) {
+        gsub(/,/, "", $i)
+        if ($i ~ /^[0-9]+:0$/ && $i != dst && $i != bridge) print $i
+      }
+    }
+  '
+)
+
+connected=0
+for _ in 1 2 3 4 5; do
+  list="$(aconnect -l 2>/dev/null || true)"
+  if printf '%s\n' "$list" | grep -qE "(Connecting To:|Connected From:).*${dst}" \
+    && printf '%s\n' "$list" | awk -v b="$bridge" -v d="$dst" '
+      $0 ~ b { show=1 }
+      show && ($0 ~ "Connecting To:" || $0 ~ "Connected From:") && $0 ~ d { found=1 }
+      END { exit found ? 0 : 1 }
+    '; then
+    log "already connected $bridge → $dst"
+    connected=1
+    break
+  fi
+  if aconnect "$bridge" "$dst" 2>/dev/null; then
+    log "connected $bridge → $dst"
+    connected=1
+    break
+  fi
+  sleep 0.6
+done
+if [[ "$connected" -ne 1 ]]; then
+  log "WARN: could not connect $bridge → $dst"
+fi

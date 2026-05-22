@@ -25,6 +25,8 @@ midi:
   # KeyStep Shift is often CC 63; Play/Stop are MMC start/stop (handled) or CC below.
   shift_cc: 63
   shift_cc_threshold: 64
+  # Play/Pause toggles start vs stop — reseed on both when using pi_midi_bridge (no freeze).
+  reseed_on_shift_stop: true
   transport_cc:
     play: [102]
     stop: [103]

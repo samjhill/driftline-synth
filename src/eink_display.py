@@ -81,6 +81,7 @@ def _load_epd_modules() -> None:
 class EInkDisplay:
     def __init__(self, config: dict[str, Any]):
         eink = config.get("eink", {})
+        self._eink_cfg = eink
         self.enabled = eink.get("enabled", True)
         self.width = eink.get("width", 250)
         self.height = eink.get("height", 122)
@@ -91,6 +92,27 @@ class EInkDisplay:
         self._available = False
         self._driver_name = ""
         self._frame_count = 0
+
+    def _bind_read_busy(self, epd: Any, *, active_high: bool) -> None:
+        """Patch vendor ReadBusy: timeout instead of hard fail (stuck busy pin)."""
+        from waveshare_epd import epdconfig
+
+        busy_pin = epd.busy_pin
+        busy_level = 1 if active_high else 0
+        timeout = float(self._eink_cfg.get("busy_timeout_seconds", 25))
+
+        def read_busy(timeout_sec: float = timeout) -> None:
+            deadline = time.time() + timeout_sec
+            while epdconfig.digital_read(busy_pin) == busy_level:
+                if time.time() >= deadline:
+                    logger.warning(
+                        "e-Paper busy pin did not clear within %.0fs; proceeding",
+                        timeout_sec,
+                    )
+                    return
+                epdconfig.delay_ms(10)
+
+        epd.ReadBusy = read_busy
 
     @staticmethod
     def _prepare_gpio_env() -> None:
@@ -128,17 +150,40 @@ class EInkDisplay:
             )
             self._available = False
             return False
-        try:
-            self._epd = _epd_module.EPD()
-            self._epd.init()
-            self._available = True
-            self._driver_name = getattr(_epd_module, "__name__", "waveshare")
-            logger.info("E-ink display initialized (%s)", self._driver_name)
-            return True
-        except Exception as e:
-            logger.warning("E-ink init failed: %s", e)
-            self._force_release()
-            return False
+        polarities = (True, False)
+        cfg_high = self._eink_cfg.get("busy_active_high")
+        if cfg_high is True:
+            polarities = (True,)
+        elif cfg_high is False:
+            polarities = (False,)
+
+        last_error: BaseException | None = None
+        for attempt, active_high in enumerate(polarities, start=1):
+            try:
+                self._release_gpio_only()
+                self._epd = _epd_module.EPD()
+                self._bind_read_busy(self._epd, active_high=active_high)
+                self._epd.init()
+                self._available = True
+                self._driver_name = getattr(_epd_module, "__name__", "waveshare")
+                logger.info(
+                    "E-ink display initialized (%s, busy_active_high=%s)",
+                    self._driver_name,
+                    active_high,
+                )
+                return True
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "E-ink init attempt %s failed (busy_active_high=%s): %s",
+                    attempt,
+                    active_high,
+                    e,
+                )
+                self._force_release()
+        if last_error is not None:
+            logger.warning("E-ink init failed: %s", last_error)
+        return False
 
     @property
     def available(self) -> bool:

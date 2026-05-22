@@ -30,6 +30,27 @@ logger = logging.getLogger("pi_midi_bridge")
 _running = True
 
 
+def _spawn_eink_restore(config: dict, root: Path) -> None:
+    """Refresh patch art on e-ink (main.py runs with --no-eink in production)."""
+    if not config.get("eink", {}).get("enabled", True):
+        return
+    script = root / "scripts" / "show_status.py"
+    vpy = root / ".venv/bin/python"
+    if not script.is_file() or not vpy.is_file():
+        return
+    env = os.environ.copy()
+    env.setdefault("HOME", "/home/pi")
+    env["PYTHONPATH"] = str(root / "src")
+    subprocess.Popen(
+        [str(vpy), str(script), "--restore-patch"],
+        cwd=str(root),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
 def main() -> int:
     global _running
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
@@ -84,8 +105,17 @@ def main() -> int:
     jack_script = root / "scripts" / "ensure_jack_playback.sh"
     _jack_ticks = 0
 
+    flues_min_vel = 100
+    if flues_backend:
+        try:
+            flues_min_vel = int(os.environ.get("PI_FLUES_MIN_VELOCITY", "100"))
+        except ValueError:
+            flues_min_vel = 100
+
     def on_note_on(note: int, velocity: int, ch: int) -> None:
         nonlocal _jack_ticks
+        if flues_out is not None and velocity > 0:
+            velocity = max(velocity, flues_min_vel)
         logger.info("bridge → note_on ch=%s note=%s vel=%s", ch, note, velocity)
         if (direct_keys or hybrid_keys) and blip_py.is_file() and py.is_file():
             subprocess.Popen(
@@ -130,10 +160,16 @@ def main() -> int:
             osc.reseed(new.seed)
             osc.send_patch(new, morph_seconds=morph)
         logger.info("Reseed → %s", new.summary())
+        _spawn_eink_restore(config, root)
+
+    def on_clock() -> None:
+        if flues_out is not None:
+            flues_out.send(mido.Message("clock"))
 
     midi.on_note_on = on_note_on
     midi.on_note_off = on_note_off
     midi.on_reseed_requested = on_reseed
+    midi.on_clock = on_clock
 
     if not midi.open():
         logger.error("No MIDI input — bridge exiting")
@@ -151,6 +187,10 @@ def main() -> int:
     if flues_backend:
         port = flues_out.name if flues_out else "(no Flues port yet)"
         logger.info("MIDI bridge FLUES on %s → %s", midi.port_name, port)
+        if flues_out is not None:
+            connect_sh = root / "scripts" / "connect_midi_to_flues.sh"
+            if connect_sh.is_file():
+                subprocess.run(["bash", str(connect_sh)], check=False, timeout=8)
     elif direct_keys:
         logger.info("MIDI bridge DIRECT ALSA on %s (hw:0,0 blips; SuperCollider off)", midi.port_name)
     elif hybrid_keys:
@@ -161,6 +201,8 @@ def main() -> int:
         )
     else:
         logger.info("MIDI bridge running on %s → OSC", midi.port_name)
+
+    _spawn_eink_restore(config, root)
 
     def stop(_s=None, _f=None):
         global _running
@@ -177,6 +219,10 @@ def main() -> int:
                 flues_out = open_flues_output()
                 if flues_out and patch is not None:
                     apply_keyboard_voice(flues_out, patch)
+                if flues_out is not None:
+                    connect_sh = root / "scripts" / "connect_midi_to_flues.sh"
+                    if connect_sh.is_file():
+                        subprocess.run(["bash", str(connect_sh)], check=False, timeout=8)
             midi.poll()
             if not flues_backend and jack_script.is_file():
                 jack_every += 1
