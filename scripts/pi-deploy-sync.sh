@@ -72,12 +72,17 @@ eink_status() {
 }
 
 eink_restore_patch() {
-  local script py
+  local script py eink_log=/var/log/pi-ambient-synth-eink.log
   script="$INSTALL_DIR/scripts/show_status.py"
   [[ -f "$script" ]] || return 0
   py="$INSTALL_DIR/.venv/bin/python"
   [[ -x "$py" ]] || py="$(command -v python3)"
-  sudo -u pi "$py" "$script" --restore-patch 2>/dev/null || true
+  mkdir -p "$(dirname "$eink_log")" 2>/dev/null || true
+  {
+    echo "$(date -Iseconds) eink_restore_patch"
+    sudo -u pi env HOME=/home/pi PYTHONPATH="$INSTALL_DIR/src" EINK_LOG="$eink_log" \
+      GPIOZERO_PIN_FACTORY=lgpio "$py" "$script" --restore-patch
+  } >>"$eink_log" 2>&1 || true
   rm -f "$EINK_STATUS_FILE"
 }
 

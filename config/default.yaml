@@ -94,6 +94,8 @@ pisugar:
 
 eink:
   enabled: true
+  # Pi: numpy sigil in restore-patch / reseed can SIGBUS — use StatusDisplay text
+  skip_numpy_sigil: true
   width: 250
   height: 122
   rotate: 0

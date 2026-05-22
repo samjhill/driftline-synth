@@ -33,6 +33,16 @@ from pisugar_battery import read_battery_snapshot
 from status_display import StatusDisplay
 
 
+def _skip_numpy_sigil(config: dict) -> bool:
+    """Pi production: numpy/visual_generator can SIGBUS in a short-lived e-ink job."""
+    for key in ("PI_EINK_SKIP_NUMPY", "PI_MONITOR_SKIP_SIGIL"):
+        if os.environ.get(key, "").strip().lower() in ("1", "true", "yes"):
+            return True
+    if config.get("eink", {}).get("skip_numpy_sigil"):
+        return True
+    return bool(config.get("monitor", {}).get("skip_sigil", False))
+
+
 def show_status(
     phase: str,
     title: str,
@@ -92,11 +102,26 @@ def show_status(
 def restore_patch() -> int:
     from patch_generator import PatchGenerator
     from state_store import StateStore
-    from visual_generator import VisualGenerator
 
     config = load_config()
     if not config.get("eink", {}).get("enabled", True):
         return 0
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    log_path = os.environ.get("EINK_LOG")
+    if log_path:
+        try:
+            Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(
+                logging.FileHandler(log_path, mode="a", encoding="utf-8")
+            )
+        except OSError:
+            pass
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(message)s",
+        handlers=handlers,
+        force=True,
+    )
     app = config.get("app", {})
     store = StateStore(
         Path(app.get("state_path", "./state/current_patch.json")),
@@ -114,7 +139,19 @@ def restore_patch() -> int:
         battery = read_battery_snapshot(config)
         if not battery.available:
             battery = None
-    img = VisualGenerator(config).render_patch(patch, battery=battery)
+    if _skip_numpy_sigil(config):
+        renderer = StatusDisplay(config)
+        img = renderer.render(
+            "playing",
+            patch.name[:28],
+            patch.scale_name[:28],
+            f"seed {patch.seed}",
+            battery=battery,
+        )
+    else:
+        from visual_generator import VisualGenerator
+
+        img = VisualGenerator(config).render_patch(patch, battery=battery)
     try:
         display.show_image(img, full_refresh=False)
     finally:

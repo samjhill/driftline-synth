@@ -47,7 +47,9 @@ def _spawn_eink_restore(config: dict, root: Path) -> None:
         return
     env = os.environ.copy()
     env.setdefault("HOME", "/home/pi")
+    env.setdefault("GPIOZERO_PIN_FACTORY", "lgpio")
     env["PYTHONPATH"] = str(root / "src")
+    env.setdefault("EINK_LOG", "/var/log/pi-ambient-synth-eink.log")
     subprocess.Popen(
         [str(vpy), str(script), "--restore-patch"],
         cwd=str(root),
