@@ -105,7 +105,7 @@ gen = PatchGenerator(cfg)
 p = resolve_current_patch(cfg, store, gen)
 out = open_flues_output()
 if out:
-    apply_keyboard_voice(out, p)
+    apply_keyboard_voice(out, p, config=cfg)
     print('Applied Flues keyboard voice:', p.summary() if p else 'defaults')
 " 2>/dev/null || true
   fi

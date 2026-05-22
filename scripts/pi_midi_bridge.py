@@ -90,7 +90,7 @@ def main() -> int:
                 break
             time.sleep(0.5)
         if flues_out and patch is not None:
-            apply_keyboard_voice(flues_out, patch)
+            apply_keyboard_voice(flues_out, patch, config=config)
     else:
         osc = OscClient(config)
         osc.set_param("master_volume", 1.0)
@@ -166,7 +166,7 @@ def main() -> int:
         store.save_current(new)
         patch = new
         if flues_out is not None:
-            apply_keyboard_voice(flues_out, new)
+            apply_keyboard_voice(flues_out, new, config=config)
             logger.info("Flues voice updated for reseed")
         elif osc is not None:
             osc.reseed_transition(2.0)
@@ -244,7 +244,7 @@ def main() -> int:
             if flues_backend and flues_out is None:
                 flues_out = open_flues_output()
                 if flues_out and patch is not None:
-                    apply_keyboard_voice(flues_out, patch)
+                    apply_keyboard_voice(flues_out, patch, config=config)
                 if flues_out is not None:
                     connect_sh = root / "scripts" / "connect_midi_to_flues.sh"
                     if connect_sh.is_file():

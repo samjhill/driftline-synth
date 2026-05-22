@@ -62,6 +62,13 @@ audio:
   default_volume: 0.85
   patch_morph_seconds: 6.0
 
+# Flues program 5: CC 73/72 are delay feedback (echo), not mix sends — keep low.
+flues:
+  max_delay1_feedback: 0.05
+  max_delay2_feedback: 0.04
+  max_filter_feedback: 0.03
+  max_noise_level: 0.05
+
 patch:
   seed: null
   default_seed: 1001
