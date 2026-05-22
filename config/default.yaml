@@ -62,14 +62,15 @@ audio:
   default_volume: 0.85
   patch_morph_seconds: 6.0
 
-# Flues KeyStep voice: formant (pitched pad) by default; physical = PM program 5.
+# Flues KeyStep voice: formant (pitched pad); physical = PM noise exciter (poor on Pi headphones).
 flues:
-  keyboard_program: physical  # physical = pitched PM; formant = vowel pad (can sound breathy)
+  keyboard_program: formant
   max_delay1_feedback: 0.012
   max_delay2_feedback: 0.01
   max_filter_feedback: 0.008
-  min_noise_level: 0.035
-  max_noise_level: 0.055
+  master_gain: 0.82
+  min_noise_level: 0.02
+  max_noise_level: 0.045
 
 patch:
   seed: null

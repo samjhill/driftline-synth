@@ -53,11 +53,12 @@ def test_feedback_capped_low():
     assert _f_to_cc(d1) < 20  # well below default 0.2 → ~25 CC
 
 
-def test_default_keyboard_program_is_physical():
-    assert keyboard_program(None, {}) == PROGRAM_PHYSICAL
-    assert keyboard_program(None, {"keyboard_program": "formant"}) == PROGRAM_FORMANT
+def test_default_keyboard_program_is_formant():
+    assert keyboard_program(None, {}) == PROGRAM_FORMANT
+    assert keyboard_program(None, {"keyboard_program": "physical"}) == PROGRAM_PHYSICAL
 
 
 def test_keystep_mpe_note_fold():
-    assert keystep_to_flues_note(80, 14) < 80
+    assert keystep_to_flues_note(88, 14) == 76
     assert keystep_to_flues_note(60, 0) == 60
+    assert keystep_to_flues_note(91, 14) == 79

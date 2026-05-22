@@ -129,7 +129,7 @@ cd ~/pi-ambient-synth
 
 12. **Audio modes (Pi 3 headphone jack)** — Two supported paths in `/etc/pi-ambient-synth/audio-mode.conf`:
     - **`direct_keys`** — reliable KeyStep blips via `aplay` (`bash scripts/pi_enable_direct_keys.sh`). SuperCollider stopped. Tagged baseline: `v0.1.0-pi-direct-keys`.
-    - **`flues`** (recommended on Pi 3) — KeyStep → MIDI bridge → **[Flues-Synth](https://github.com/danja/flues/tree/main/flues-synth)** on `plughw:0,0`: `bash scripts/pi_enable_flues_engine.sh`, then `bash scripts/prove_flues_engine_pi.sh`. No SuperCollider/JACK.
+    - **`flues`** (recommended on Pi 3) — KeyStep → MIDI bridge → **[Flues-Synth](https://github.com/danja/flues/tree/main/flues-synth)** on `plughw:0,0`: `bash scripts/pi_enable_flues_engine.sh`, then `bash scripts/prove_flues_engine_pi.sh`. No SuperCollider/JACK. Bridge remaps MPE to MIDI channel 1 and **formant program 3** (pitched pad). If every key sounds like the same hiss: disable **MPE** in Arturia MIDI Control Center (single channel), run `bash scripts/connect_midi_to_flues.sh` (disconnects Flues auto-connect to KeyStep), and confirm `journalctl -u pi-ambient-synth-midi -f` shows `flues=` note numbers changing per key.
     - **`ambient`** — KeyStep → OSC → SuperCollider (legacy; often silent on Pi headphones): `bash scripts/pi_enable_ambient_engine.sh`.
     - **`direct_keys`** — short `aplay` blips only: `bash scripts/pi_enable_direct_keys.sh`.
 

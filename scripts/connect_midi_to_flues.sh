@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Route KeyStep only through pi-ambient-synth-midi (RtMidiOut) → Flues-Synth.
-# Do not wire KeyStep straight to Flues — duplicate note streams break arpeggiation.
+# Route KeyStep only through pi-ambient-synth-midi → Flues-Synth.
+# Flues auto-connects to KeyStep (MPE ch 15); disconnect so bridge notes use ch 1.
 set -euo pipefail
 
 log() { echo "$(date -Iseconds) [aconnect-flues] $*"; }
@@ -20,6 +20,9 @@ dst="$(printf '%s\n' "$list" | awk '
 bridge="$(printf '%s\n' "$list" | awk '
   /client [0-9]+:.*RtMidiOut/ { client=$2; gsub(":", "", client); print client ":0"; exit }
 ')"
+keystep="$(printf '%s\n' "$list" | awk '
+  /client [0-9]+:.*[Kk]ey[Ss]tep/ { client=$2; gsub(":", "", client); print client ":0"; exit }
+')"
 
 if [[ -z "$dst" ]]; then
   log "WARN: Flues MIDI In not found"
@@ -27,12 +30,19 @@ if [[ -z "$dst" ]]; then
   exit 0
 fi
 
+# Flues subscribes directly to KeyStep (bypasses bridge channel remap). Disconnect it.
+if [[ -n "$keystep" && "$keystep" != "$dst" ]]; then
+  if aconnect -d "$keystep" "$dst" 2>/dev/null; then
+    log "disconnected KeyStep $keystep → Flues $dst (use bridge path only)"
+  fi
+fi
+
 if [[ -z "$bridge" ]]; then
-  log "WARN: MIDI bridge RtMidiOut not up yet (pi-ambient-synth-midi?)"
+  log "bridge uses Flues MIDI In directly (no RtMidiOut yet)"
   exit 0
 fi
 
-# Disconnect anything except the bridge from Flues (KeyStep direct, Midi Through, etc.).
+# Disconnect anything except the bridge from Flues (Midi Through, etc.).
 while IFS= read -r src; do
   [[ -z "$src" || "$src" == "$bridge" ]] && continue
   if aconnect -d "$src" "$dst" 2>/dev/null; then
@@ -70,5 +80,5 @@ for _ in 1 2 3 4 5; do
   sleep 0.6
 done
 if [[ "$connected" -ne 1 ]]; then
-  log "WARN: could not connect $bridge → $dst"
+  log "WARN: could not connect $bridge → $dst (bridge may write Flues MIDI In via mido)"
 fi

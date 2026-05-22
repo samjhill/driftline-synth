@@ -127,7 +127,17 @@ def main() -> int:
         nonlocal _jack_ticks
         if flues_out is not None and velocity > 0:
             velocity = max(velocity, flues_min_vel)
-        logger.info("bridge → note_on ch=%s note=%s vel=%s", ch, note, velocity)
+        if flues_out is not None:
+            flues_note = keystep_to_flues_note(note, ch)
+            logger.info(
+                "bridge → flues note_on midi=%s flues=%s vel=%s ch_in=%s",
+                note,
+                flues_note,
+                velocity,
+                ch,
+            )
+        else:
+            logger.info("bridge → note_on ch=%s note=%s vel=%s", ch, note, velocity)
         if (direct_keys or hybrid_keys) and blip_py.is_file() and py.is_file():
             subprocess.Popen(
                 [str(py), str(blip_py), str(note), str(velocity), "-D", blip_device, "-d", "0.22"],
@@ -136,7 +146,6 @@ def main() -> int:
                 start_new_session=True,
             )
         if flues_out is not None:
-            flues_note = keystep_to_flues_note(note, ch)
             flues_out.send(
                 mido.Message(
                     "note_on",

@@ -72,11 +72,12 @@ def find_flues_output_port() -> str | None:
 
 
 def keystep_to_flues_note(note: int, channel: int) -> int:
-    """KeyStep MPE (ch 14+) often sends high note IDs — fold into a melodic range."""
+    """Map KeyStep notes to Flues melodic range (C2–C7). MPE may send high note IDs."""
     n = int(note)
-    if channel >= 2 and n > 72:
-        n -= 24
-    if channel >= 2 and n > 72:
+    # MPE per-zone notes above G5: drop an octave (keep distinct semitones).
+    if channel >= 2 and n > 84:
+        n -= 12
+    if channel >= 2 and n > 84:
         n -= 12
     return max(36, min(96, n))
 
@@ -110,7 +111,7 @@ def _flues_cfg(config: dict[str, Any] | None) -> dict[str, Any]:
 
 def keyboard_program(patch: Patch | None, cfg: dict[str, Any]) -> int:
     """Which Flues program to use for KeyStep notes."""
-    mode = str(cfg.get("keyboard_program", "physical")).lower()
+    mode = str(cfg.get("keyboard_program", "formant")).lower()
     if mode == "physical":
         return PROGRAM_PHYSICAL
     if mode == "formant":
@@ -134,9 +135,11 @@ def _feedback_levels(patch: Patch | None, cfg: dict[str, Any]) -> tuple[float, f
     return d1, d2, filt
 
 
+CC_MASTER_GAIN = 7
+
+
 def _silence_flues(port: mido.ports.BaseOutput) -> None:
-    for ch in range(16):
-        port.send(mido.Message("control_change", channel=ch, control=123, value=0))
+    port.send(mido.Message("control_change", channel=FLUES_CH, control=123, value=0))
 
 
 def _apply_formant_voice(
@@ -167,7 +170,9 @@ def _apply_formant_voice(
         noise = 0.07
         attack, release = 0.08, 1.5
 
+    gain = float(cfg.get("master_gain", 0.82))
     targets: list[tuple[int, int]] = [
+        (CC_MASTER_GAIN, _f_to_cc(gain)),
         (FMT_F1, _hz_to_cc(f1, 200.0, 1000.0)),
         (FMT_F2, _hz_to_cc(f2, 500.0, 3000.0)),
         (FMT_F3, _hz_to_cc(f3, 1500.0, 4000.0)),
@@ -220,7 +225,9 @@ def _apply_physical_voice(
         filt_hz = 1100.0
         filt_q = 0.1
 
+    gain = float(cfg.get("master_gain", 0.82))
     targets: list[tuple[int, int]] = [
+        (CC_MASTER_GAIN, _f_to_cc(gain)),
         (PM_INTERFACE, _interface_cc(iface)),
         (PM_INTENSITY, _f_to_cc(intensity)),
         (PM_ATTACK, _f_to_cc(max(attack, 0.05), 0.02, 0.5)),

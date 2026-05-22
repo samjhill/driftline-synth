@@ -14,6 +14,7 @@ Environment=FLUES_CONTROL_NOTES=0
 # Do not pkill flues-synth here — systemd restart would kill a running engine.
 ExecStartPre=/bin/sh -c 'pkill -x jackd scsynth sclang 2>/dev/null || true; sleep 0.3'
 ExecStart=/home/pi/pi-ambient-synth/bin/flues-synth plughw:0,0
+ExecStartPost=/bin/bash -c 'sleep 2; /home/pi/pi-ambient-synth/scripts/connect_midi_to_flues.sh || true'
 Restart=always
 RestartSec=3
 TimeoutStartSec=30
