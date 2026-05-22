@@ -56,10 +56,29 @@ INTERFACE_NAMES = (
 
 
 def find_flues_output_port() -> str | None:
-    for name in mido.get_output_names():
+    """Prefer bridge RtMidiOut (aconnect → Flues); else Flues MIDI In."""
+    names = mido.get_output_names()
+    for name in names:
+        low = name.lower()
+        if "rtmidi" in low and "output" in low:
+            return name
+    for name in names:
+        if "flues" in name.lower() and "in" in name.lower():
+            return name
+    for name in names:
         if "flues" in name.lower():
             return name
     return None
+
+
+def keystep_to_flues_note(note: int, channel: int) -> int:
+    """KeyStep MPE (ch 14+) often sends high note IDs — fold into a melodic range."""
+    n = int(note)
+    if channel >= 2 and n > 72:
+        n -= 24
+    if channel >= 2 and n > 72:
+        n -= 12
+    return max(36, min(96, n))
 
 
 def _cc(port: mido.ports.BaseOutput, control: int, value: int) -> None:
@@ -89,9 +108,14 @@ def _flues_cfg(config: dict[str, Any] | None) -> dict[str, Any]:
     return config.get("flues", {})
 
 
+def _toggle_feedback_off(port: mido.ports.BaseOutput) -> None:
+    """Flues control note 38 toggles delay/filter feedback loop (see flues midi.md)."""
+    port.send(mido.Message("note_on", note=38, velocity=127, channel=FLUES_CH))
+
+
 def keyboard_program(patch: Patch | None, cfg: dict[str, Any]) -> int:
     """Which Flues program to use for KeyStep notes."""
-    mode = str(cfg.get("keyboard_program", "formant")).lower()
+    mode = str(cfg.get("keyboard_program", "physical")).lower()
     if mode == "physical":
         return PROGRAM_PHYSICAL
     if mode == "formant":
@@ -183,10 +207,10 @@ def _apply_physical_voice(
     release = p.release if p else 1.8
     d1_fb, d2_fb, filt_fb = _feedback_levels(p, cfg)
 
-    noise_min = float(cfg.get("min_noise_level", 0.07))
-    noise_max = float(cfg.get("max_noise_level", 0.11))
+    noise_min = float(cfg.get("min_noise_level", 0.09))
+    noise_max = float(cfg.get("max_noise_level", 0.13))
     if p:
-        intensity = max(0.48, min(0.62, 0.58 - p.brightness * 0.15))
+        intensity = max(0.50, min(0.65, 0.62 - p.brightness * 0.12))
         noise = max(
             noise_min,
             min(noise_max, noise_min + p.noise_level * (noise_max - noise_min)),
@@ -216,6 +240,7 @@ def _apply_physical_voice(
     ]
     for cc, val in targets:
         _cc(port, cc, val)
+    _toggle_feedback_off(port)
     logger.info(
         "Flues PM voice: iface=%s intensity=%.2f noise=%.3f d1_fb=%.3f patch=%s",
         iface,

@@ -23,6 +23,7 @@ from flues_client import (  # noqa: E402
     apply_keyboard_voice,
     forward_mod_wheel,
     forward_pitch_bend,
+    keystep_to_flues_note,
     open_flues_output,
 )
 from osc_client import OscClient  # noqa: E402
@@ -135,8 +136,14 @@ def main() -> int:
                 start_new_session=True,
             )
         if flues_out is not None:
+            flues_note = keystep_to_flues_note(note, ch)
             flues_out.send(
-                mido.Message("note_on", note=int(note), velocity=int(velocity), channel=0)
+                mido.Message(
+                    "note_on",
+                    note=flues_note,
+                    velocity=int(velocity),
+                    channel=0,
+                )
             )
         elif not direct_keys and osc is not None:
             logger.info("bridge → OSC note_on ch=%s note=%s vel=%s", ch, note, velocity)
@@ -149,8 +156,14 @@ def main() -> int:
         if os.environ.get("PI_MIDI_LOG_NOTES", "").strip() in ("1", "true", "yes"):
             logger.info("note_off ch=%s note=%s", ch, note)
         if flues_out is not None:
+            flues_note = keystep_to_flues_note(note, ch)
             flues_out.send(
-                mido.Message("note_off", note=int(note), velocity=int(velocity), channel=0)
+                mido.Message(
+                    "note_off",
+                    note=flues_note,
+                    velocity=int(velocity),
+                    channel=0,
+                )
             )
         elif not direct_keys and osc is not None:
             osc.note_off(note, velocity)

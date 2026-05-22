@@ -64,12 +64,12 @@ audio:
 
 # Flues KeyStep voice: formant (pitched pad) by default; physical = PM program 5.
 flues:
-  keyboard_program: formant  # formant | physical | auto
-  max_delay1_feedback: 0.04
-  max_delay2_feedback: 0.03
-  max_filter_feedback: 0.02
-  min_noise_level: 0.05
-  max_noise_level: 0.10
+  keyboard_program: physical  # physical = pitched PM; formant = vowel pad (can sound breathy)
+  max_delay1_feedback: 0.03
+  max_delay2_feedback: 0.025
+  max_filter_feedback: 0.015
+  min_noise_level: 0.09
+  max_noise_level: 0.13
 
 patch:
   seed: null
