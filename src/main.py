@@ -22,6 +22,7 @@ from midi_controller import MidiController, save_midi_status
 from osc_client import OscClient
 from note_names import format_active_notes
 from patch_generator import PatchGenerator
+from patch_prefs import load_patch_prefs
 from patch_resolve import resolve_current_patch
 from patch_model import Patch
 from midi_clock import MidiClock
@@ -312,10 +313,22 @@ class PiAmbientSynth:
         old = self._patch
         seed = random.randint(0, 2**31 - 1)
         evolve = self._patch.evolve_enabled if self._patch else False
+        prefs = load_patch_prefs(self.config)
         if self._patch:
-            self._patch = self.patch_gen.morph_from(self._patch, seed, evolve)
+            self._patch = self.patch_gen.morph_from(
+                self._patch,
+                seed,
+                evolve,
+                genre=prefs.genre,
+                reseed_scope=prefs.reseed_scope,
+            )
         else:
-            self._patch = self.patch_gen.generate(seed=seed, evolve_enabled=evolve)
+            self._patch = self.patch_gen.generate(
+                seed=seed,
+                evolve_enabled=evolve,
+                genre=prefs.genre,
+                reseed_scope=prefs.reseed_scope,
+            )
 
         if self.config.get("eink", {}).get("enabled", True) and old:
             wipe = self.visual.render_reseed_wipe(old, self._patch)

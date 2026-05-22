@@ -59,6 +59,8 @@ Web UI: `http://<pi-ip>:8421`. Config file: `/etc/pisugar-server/config.json`.
 
 The synth reads `battery: N` from `/tmp/pisugar-server.sock` (or TCP `127.0.0.1:8423`) and draws a gauge + **NN%** in the top-right of the e-ink (patch sigils and status screens). Toggle in `config/default.yaml` under `pisugar:`.
 
+**Reseed button:** With `pisugar.reseed_on_button: true` (default), deploy/restart registers a **single tap** on the PiSugar’s physical button to queue a new ambient patch (`scripts/pi_pisugar_button_reseed.sh` → `/var/lib/pi-ambient-synth/reseed.request`). See [keystep_reseed.md](keystep_reseed.md). Configure or inspect taps in the web UI (`http://<pi-ip>:8421`) under button actions, or via `get button_shell single` on the socket.
+
 ## SPI
 
 Enable SPI before first boot with display:

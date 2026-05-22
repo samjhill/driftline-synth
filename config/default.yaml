@@ -25,13 +25,25 @@ midi:
   # KeyStep Shift is often CC 63; Play/Stop are MMC start/stop (handled) or CC below.
   shift_cc: 63
   shift_cc_threshold: 64
-  # Play/Pause toggles start vs stop — reseed on both when using pi_midi_bridge (no freeze).
-  reseed_on_shift_stop: true
+  # Shift is NOT a MIDI message on KeyStep — see docs/keystep_reseed.md
+  reseed_on_modifier_press: true
+  reseed_trigger_ccs: [64]
+  reseed_on_shift_stop: false
+  shift_latch_seconds: 1.0
+  modifier_ccs: [63, 64]
+  modifier_latch_seconds: 0.5
+  reseed_on_transport_restart: true
+  transport_restart_window_seconds: 3.0
+  # Shift+Play restarts arp → extra MIDI Start while clock already running (~1s+)
+  reseed_on_start_while_clocking: true
+  clocking_min_seconds: 1.0
+  pitch_bend_enabled: true
+  mod_wheel_cc: 1
   transport_cc:
     play: [102]
     stop: [103]
     record: [104]
-  weather_cc: 1
+  weather_cc: 74
   favorite_recall_window_ms: 600
   split_note: 55
   # KeyStep MPE often sends ch 15 (mido ch=14) with velocity < 20 — floor before OSC.
@@ -56,6 +68,9 @@ patch:
   evolve_enabled: false
   reseed_mode: "curated"
   default_scale_family: "ambient_modal"
+  # Genre + scope for monitor / PiSugar / KeyStep reseed (see patch_genres.py)
+  default_genre: chill
+  default_reseed_scope: genre  # genre | all
 
 pisugar:
   enabled: true
@@ -66,6 +81,9 @@ pisugar:
   poll_seconds: 90
   charge_poll_seconds: 5
   show_on_display: true
+  # Physical button on PiSugar board → new patch (via reseed.request)
+  reseed_on_button: true
+  reseed_button_kind: single  # double/long often used for shutdown in Power Manager
 
 eink:
   enabled: true

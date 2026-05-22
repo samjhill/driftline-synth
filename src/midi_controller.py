@@ -29,7 +29,11 @@ EVOLVE_NOTE = 2
 # Standard MMC real-time (if KeyStep sends them)
 MMC_PLAY = 0xFA
 MMC_STOP = 0xFC
+MMC_CONTINUE = 0xFB
 MMC_RECORD = 0xF7
+
+# Sustain / hold often used as modifier on Arturia controllers
+MODIFIER_CCS_DEFAULT = (63, 64)
 
 
 class MidiController:
@@ -50,10 +54,40 @@ class MidiController:
         self._weather_cc = midi.get("weather_cc", 1)
         self._split_note = midi.get("split_note", 55)
         self._velocity_floor = int(midi.get("velocity_floor", 72))
-        self._shift_cc = midi.get("shift_cc", 63)
+        shift_cc = midi.get("shift_cc", 63)
+        if isinstance(shift_cc, list):
+            self._shift_ccs = [int(x) for x in shift_cc]
+        else:
+            self._shift_ccs = [int(shift_cc)]
         self._shift_threshold = midi.get("shift_cc_threshold", 64)
-        # KeyStep Play/Pause is one button: sends start when playing, stop when pausing.
+        self._shift_latch_seconds = float(midi.get("shift_latch_seconds", 1.0))
+        self._shift_latch_until: float = 0.0
+        self._modifier_until: float = 0.0
+        self._modifier_latch_seconds = float(
+            midi.get("modifier_latch_seconds", midi.get("shift_latch_seconds", 1.5))
+        )
+        modifier_ccs = midi.get("modifier_ccs", MODIFIER_CCS_DEFAULT)
+        trigger_ccs = midi.get("reseed_trigger_ccs", [])
+        self._reseed_trigger_ccs = set(int(x) for x in trigger_ccs)
+        self._modifier_ccs = (
+            set(self._shift_ccs) | {int(x) for x in modifier_ccs} | self._reseed_trigger_ccs
+        )
         self._reseed_on_shift_stop = bool(midi.get("reseed_on_shift_stop", False))
+        self._reseed_on_modifier_press = bool(midi.get("reseed_on_modifier_press", True))
+        self._mod_wheel_cc = int(midi.get("mod_wheel_cc", 1))
+        self._pitch_bend_enabled = bool(midi.get("pitch_bend_enabled", True))
+        self._reseed_on_transport_restart = bool(midi.get("reseed_on_transport_restart", False))
+        self._transport_restart_window = float(midi.get("transport_restart_window_seconds", 3.0))
+        # KeyStep Shift+Play restarts arp locally; USB often sends Start with no Shift CC while clock runs.
+        self._reseed_on_start_while_clocking = bool(
+            midi.get("reseed_on_start_while_clocking", True)
+        )
+        self._clocking_min_seconds = float(midi.get("clocking_min_seconds", 1.0))
+        self._clock_since: float = 0.0
+        self._last_reseed_at: float = 0.0
+        self._log_transport = midi.get("log_transport", False) or os.environ.get(
+            "PI_MIDI_LOG_TRANSPORT", ""
+        ).strip() in ("1", "true", "yes")
         transport_cc = midi.get("transport_cc", {})
         self._transport_cc: dict[int, str] = dict(TRANSPORT_CC)
         for event, cc in transport_cc.items():
@@ -75,6 +109,7 @@ class MidiController:
         self.on_hold_change: Callable[[bool], None] | None = None
         self.on_recall_favorite: Callable[[], None] | None = None
         self.on_weather_change: Callable[[float], None] | None = None
+        self.on_pitch_bend: Callable[[int, int], None] | None = None
 
     @property
     def port_name(self) -> str | None:
@@ -138,6 +173,98 @@ class MidiController:
             return True
         return channel == self.channel_filter
 
+    def _shift_active(self) -> bool:
+        if self._shift_held:
+            return True
+        now = time.time()
+        return now < self._shift_latch_until or now < self._modifier_until
+
+    def _set_shift_held(self, held: bool) -> None:
+        self._shift_held = held
+        if held:
+            self._extend_modifier_latch()
+
+    def _extend_modifier_latch(self) -> None:
+        now = time.time()
+        self._shift_latch_until = now + self._shift_latch_seconds
+        self._modifier_until = now + self._modifier_latch_seconds
+
+    def _maybe_reseed(self, reason: str) -> None:
+        if not self.on_reseed_requested:
+            return
+        now = time.time()
+        if now - self._last_reseed_at < 0.4:
+            return
+        self._last_reseed_at = now
+        logger.info("%s → reseed", reason)
+        self.on_reseed_requested()
+
+    @staticmethod
+    def _mmc_event_from_sysex(data: tuple[int, ...]) -> str | None:
+        if not data:
+            return None
+        if len(data) == 1:
+            b = data[0]
+            if b == MMC_PLAY:
+                return "play"
+            if b == MMC_STOP:
+                return "stop"
+            if b == MMC_CONTINUE:
+                return "continue"
+            return None
+        d = list(data)
+        for i in range(len(d) - 1):
+            if d[i] == 0x06 and d[i + 1] == 0x02:
+                return "play"
+            if d[i] == 0x06 and d[i + 1] == 0x01:
+                return "stop"
+            if d[i] == 0x06 and d[i + 1] == 0x03:
+                return "continue"
+        return None
+
+    def _on_transport_pulse(self, event: str) -> None:
+        """Handle play/stop/continue from MMC, realtime, or transport CC."""
+        now = time.time()
+        if event in ("play", "continue", "start"):
+            if self._reseed_on_transport_restart and self._last_stop_at:
+                if now - self._last_stop_at <= self._transport_restart_window:
+                    self._maybe_reseed(
+                        f"transport restart ({event} {now - self._last_stop_at:.2f}s after stop)"
+                    )
+                    return
+            if (
+                self._reseed_on_start_while_clocking
+                and self._clock_since
+                and (now - self._clock_since) >= self._clocking_min_seconds
+            ):
+                self._maybe_reseed(
+                    f"SHIFT+PLAY pattern ({event} while arp clock active {now - self._clock_since:.1f}s)"
+                )
+                return
+            if self._shift_active():
+                self._maybe_reseed(f"SHIFT+{event.upper()} (transport)")
+                return
+            if self.on_transport:
+                self.on_transport("play")
+        elif event == "stop":
+            self._clock_since = 0.0
+            if now - self._last_stop_at < self._recall_window and self.on_recall_favorite:
+                logger.info("Double STOP → recall favorite")
+                self.on_recall_favorite()
+            self._last_stop_at = now
+            if self._shift_active() and self.on_freeze_requested:
+                logger.info("SHIFT+STOP → freeze/favorite")
+                self.on_freeze_requested()
+                return
+            if self._shift_active() and self._reseed_on_shift_stop:
+                self._maybe_reseed("SHIFT+STOP (transport)")
+                return
+            if self.on_transport:
+                self.on_transport("stop")
+        elif event == "record" and self._shift_active() and self.on_evolve_toggle_requested:
+            logger.info("SHIFT+RECORD → evolve toggle")
+            self.on_evolve_toggle_requested()
+
     def _handle_message(self, msg: mido.Message) -> None:
         if msg.type == "note_on" and msg.velocity > 0:
             ch = getattr(msg, "channel", 0)
@@ -173,58 +300,68 @@ class MidiController:
                 self.on_note_off(msg.note, vel, ch)
         elif msg.type == "control_change":
             ch = getattr(msg, "channel", 0)
+            if msg.control in self._modifier_ccs:
+                rising = msg.value >= self._shift_threshold and not self._shift_held
+                if msg.value >= self._shift_threshold:
+                    self._set_shift_held(True)
+                    if self._log_transport:
+                        logger.info("Modifier held (CC %s = %s ch=%s)", msg.control, msg.value, ch)
+                else:
+                    self._set_shift_held(False)
+                    if self._log_transport:
+                        logger.info("Modifier released (CC %s = %s ch=%s)", msg.control, msg.value, ch)
+                if rising and self._reseed_on_modifier_press:
+                    label = (
+                        "reseed CC"
+                        if msg.control in self._reseed_trigger_ccs
+                        else "Shift/modifier"
+                    )
+                    self._maybe_reseed(f"{label} press (CC {msg.control})")
             if not self._channel_ok(ch):
                 return
-            if msg.control == self._shift_cc and msg.value >= self._shift_threshold:
-                self._shift_held = True
-            elif msg.control == self._shift_cc and msg.value < self._shift_threshold:
-                self._shift_held = False
+            if msg.control == self._mod_wheel_cc and self.on_cc:
+                self.on_cc(msg.control, msg.value, ch)
+                return
             if msg.control == 64:
                 if self.on_hold_change:
                     self.on_hold_change(msg.value >= 64)
             if msg.control in self._transport_cc:
                 event = self._transport_cc[msg.control]
-                if event == "stop":
-                    now = time.time()
-                    if now - self._last_stop_at < self._recall_window and self.on_recall_favorite:
-                        logger.info("Double STOP → recall favorite")
-                        self.on_recall_favorite()
-                    self._last_stop_at = now
-                if self._shift_held:
-                    self._handle_shift_transport(event)
-                elif self.on_transport:
-                    self.on_transport(event)
+                if self._log_transport:
+                    logger.info(
+                        "Transport CC %s → %s (modifier_active=%s)",
+                        msg.control,
+                        event,
+                        self._shift_active(),
+                    )
+                self._on_transport_pulse(event)
             if msg.control == self._weather_cc and self.on_weather_change:
                 self.on_weather_change(msg.value / 127.0)
             if self.on_cc:
                 self.on_cc(msg.control, msg.value, ch)
         elif msg.type in ("start", "continue"):
-            if self._shift_held and self.on_reseed_requested:
-                logger.info("SHIFT+PLAY (MIDI %s) → reseed", msg.type)
-                self.on_reseed_requested()
-            elif self.on_transport:
-                self.on_transport("play")
+            if self._log_transport:
+                logger.info("MIDI %s (modifier_active=%s)", msg.type, self._shift_active())
+            self._on_transport_pulse(msg.type)
         elif msg.type == "stop":
-            now = time.time()
-            if now - self._last_stop_at < self._recall_window and self.on_recall_favorite:
-                logger.info("Double STOP → recall favorite")
-                self.on_recall_favorite()
-            self._last_stop_at = now
-            if self._shift_held and self.on_freeze_requested:
-                logger.info("SHIFT+STOP → freeze/favorite")
-                self.on_freeze_requested()
-            elif self._shift_held and self.on_reseed_requested and (
-                self._reseed_on_shift_stop or self.on_freeze_requested is None
-            ):
-                logger.info("SHIFT+PAUSE/STOP (MIDI %s) → reseed", msg.type)
-                self.on_reseed_requested()
-            elif self.on_transport:
-                self.on_transport("stop")
+            if self._log_transport:
+                logger.info("MIDI stop (modifier_active=%s)", self._shift_active())
+            self._on_transport_pulse("stop")
         elif msg.type == "clock":
+            if not self._clock_since:
+                self._clock_since = time.time()
             if self.on_clock:
                 self.on_clock()
+        elif msg.type == "pitchwheel":
+            ch = getattr(msg, "channel", 0)
+            if self._pitch_bend_enabled and self.on_pitch_bend:
+                self.on_pitch_bend(int(msg.pitch), ch)
         elif msg.type == "sysex":
+            if self._log_transport:
+                logger.info("MIDI sysex (%s bytes): %s", len(msg.data), msg.data[:12])
             self._handle_sysex(msg.data)
+        elif self._log_transport and msg.type not in ("clock",):
+            logger.info("MIDI other: %s", msg)
 
     def is_duo_low(self, note: int) -> bool:
         return note < self._split_note
@@ -241,33 +378,12 @@ class MidiController:
         elif note == EVOLVE_NOTE and self.on_evolve_toggle_requested:
             self.on_evolve_toggle_requested()
 
-    def _handle_shift_transport(self, event: str) -> None:
-        if event == "play" and self.on_reseed_requested:
-            logger.info("SHIFT+PLAY → reseed")
-            self.on_reseed_requested()
-        elif event == "stop" and self.on_freeze_requested:
-            logger.info("SHIFT+STOP → freeze/favorite")
-            self.on_freeze_requested()
-        elif event == "record" and self.on_evolve_toggle_requested:
-            logger.info("SHIFT+RECORD → evolve toggle")
-            self.on_evolve_toggle_requested()
-
     def _handle_sysex(self, data: tuple[int, ...]) -> None:
-        if not data:
-            return
-        status = data[0] if len(data) == 1 else None
-        if len(data) >= 1:
-            b = data[0]
-            if b == MMC_PLAY:
-                if self._shift_held and self.on_reseed_requested:
-                    self.on_reseed_requested()
-                elif self.on_transport:
-                    self.on_transport("play")
-            elif b == MMC_STOP:
-                if self._shift_held and self.on_freeze_requested:
-                    self.on_freeze_requested()
-                elif self.on_transport:
-                    self.on_transport("stop")
+        event = self._mmc_event_from_sysex(data)
+        if event:
+            if self._log_transport:
+                logger.info("MMC sysex → %s", event)
+            self._on_transport_pulse(event)
 
     def start(self) -> None:
         if not self._port:

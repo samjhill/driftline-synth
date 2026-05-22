@@ -17,6 +17,9 @@ SECS = int(sys.argv[1]) if len(sys.argv) > 1 else 12
 
 
 def main() -> int:
+    import os
+
+    os.environ.setdefault("PI_MIDI_LOG_TRANSPORT", "1")
     midi = MidiController(load_config())
     if not midi.open():
         print("FAIL: no MIDI input", file=sys.stderr)

@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from patch_genres import DEFAULT_GENRE, GENRES, apply_genre_postprocess, genre_archetype_keys
 from patch_model import Patch
 
 # Archetype defines biased ranges (lo, hi) per parameter — "same world, different weather"
@@ -132,8 +133,14 @@ class PatchGenerator:
             return [{"name": "Dorian", "intervals": [0, 2, 3, 5, 7, 9, 10]}]
         return family
 
-    def _pick_archetype(self, rng: random.Random) -> tuple[str, dict[str, Any]]:
-        key = rng.choice(list(ARCHETYPES.keys()))
+    def _pick_archetype(
+        self, rng: random.Random, *, allowed: list[str] | None = None
+    ) -> tuple[str, dict[str, Any]]:
+        keys = allowed if allowed else list(ARCHETYPES.keys())
+        keys = [k for k in keys if k in ARCHETYPES]
+        if not keys:
+            keys = list(ARCHETYPES.keys())
+        key = rng.choice(keys)
         return key, ARCHETYPES[key]
 
     def _pick_param(
@@ -145,11 +152,21 @@ class PatchGenerator:
             lo, hi = PARAM_RANGES[key]
         return lo + rng.random() * (hi - lo)
 
-    def generate(self, seed: int | None = None, evolve_enabled: bool = False) -> Patch:
+    def generate(
+        self,
+        seed: int | None = None,
+        evolve_enabled: bool = False,
+        *,
+        genre: str | None = None,
+        reseed_scope: str = "genre",
+    ) -> Patch:
         if seed is None:
             seed = random.randint(0, 2**31 - 1)
         rng = random.Random(seed)
-        _arch_key, archetype = self._pick_archetype(rng)
+        genre_id = genre or DEFAULT_GENRE
+        use_genre = reseed_scope != "all" and genre_id != "all"
+        allowed = genre_archetype_keys(genre_id) if use_genre else None
+        _arch_key, archetype = self._pick_archetype(rng, allowed=allowed)
         arch_ranges = archetype.get("ranges", {})
         arch_scales = archetype.get("scales", [])
         all_scales = self._scale_choices()
@@ -171,7 +188,7 @@ class PatchGenerator:
         else:
             delay_time = rng.choice(DELAY_TIMES)
 
-        return Patch(
+        patch = Patch(
             seed=seed,
             name=name,
             scale_name=scale["name"],
@@ -197,12 +214,29 @@ class PatchGenerator:
             brightness=pick("brightness"),
             evolve_enabled=evolve_enabled,
         )
+        if use_genre:
+            patch = apply_genre_postprocess(patch, genre_id)
+            g = GENRES.get(genre_id) or {}
+            tag = g.get("label", genre_id)
+            if tag not in patch.name:
+                patch = Patch.from_dict({**patch.to_dict(), "name": f"{patch.name} · {tag}"})
+        return patch
 
-    def morph_from(self, base: Patch, seed: int, evolve_enabled: bool | None = None) -> Patch:
+    def morph_from(
+        self,
+        base: Patch,
+        seed: int,
+        evolve_enabled: bool | None = None,
+        *,
+        genre: str | None = None,
+        reseed_scope: str = "genre",
+    ) -> Patch:
         rng = random.Random(seed)
         new = self.generate(
             seed=seed,
             evolve_enabled=evolve_enabled if evolve_enabled is not None else base.evolve_enabled,
+            genre=genre,
+            reseed_scope=reseed_scope,
         )
         if rng.random() < 0.5:
             new.root_note = base.root_note

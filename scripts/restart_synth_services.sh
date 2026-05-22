@@ -110,6 +110,9 @@ if out:
 " 2>/dev/null || true
   fi
   systemctl is-active pi-flues-synth.service pi-ambient-synth-midi.service 2>/dev/null || true
+  if [[ -x "$INSTALL_DIR/scripts/pi_setup_pisugar_reseed_button.sh" ]]; then
+    "$INSTALL_DIR/scripts/pi_setup_pisugar_reseed_button.sh" || true
+  fi
   if [[ "${PI_SKIP_DEPLOY_TIMER:-0}" != "1" ]]; then
     sudo systemctl start pi-ambient-synth-deploy.timer 2>/dev/null || true
   else

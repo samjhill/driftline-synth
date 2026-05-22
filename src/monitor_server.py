@@ -23,9 +23,12 @@ from logging_setup import setup_logging
 from midi_controller import midi_status_summary
 from network_info import network_snapshot
 from osc_client import PATCH_OSC_KEYS, OscClient
+from patch_genres import list_genres
 from patch_generator import PARAM_RANGES, PatchGenerator
 from patch_model import Patch
+from patch_prefs import PatchPrefs, load_patch_prefs, save_patch_prefs
 from patch_resolve import resolve_current_patch
+from reseed_trigger import reseed_request_path, touch_reseed_request
 from pisugar_battery import read_battery_snapshot
 from state_store import StateStore
 
@@ -317,6 +320,7 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
             "master": _read_master_volume(config),
             "alsa": _read_alsa_pcm(),
         },
+        "patch_prefs": _patch_prefs_payload(config),
         "journal_logs": journal_logs,
         "journal_errors": journal_errors,
         "status_snippets": status_snippets,
@@ -463,6 +467,18 @@ def _knob_spec(key: str, label: str, log_scale: bool) -> dict[str, Any]:
     }
 
 
+def _patch_prefs_payload(config: dict[str, Any]) -> dict[str, Any]:
+    prefs = load_patch_prefs(config)
+    return {
+        "genre": prefs.genre,
+        "reseed_scope": prefs.reseed_scope,
+        "genres": [
+            {"id": g.id, "label": g.label, "description": g.description}
+            for g in list_genres()
+        ],
+    }
+
+
 def _controls_payload(config: dict[str, Any]) -> dict[str, Any]:
     patch = _load_patch(config)
     patch_data = patch.to_dict()
@@ -476,7 +492,16 @@ def _controls_payload(config: dict[str, Any]) -> dict[str, Any]:
         "master_volume": vol,
         "alsa_volume": alsa,
         "osc_weights": _osc_weights(patch.oscillator_blend),
+        "patch_prefs": _patch_prefs_payload(config),
     }
+
+
+def _apply_patch_prefs(config: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    current = load_patch_prefs(config)
+    genre = str(data.get("genre", current.genre))
+    scope = str(data.get("reseed_scope", current.reseed_scope))
+    saved = save_patch_prefs(config, PatchPrefs(genre=genre, reseed_scope=scope))
+    return {"ok": True, "patch_prefs": saved.to_dict()}
 
 
 def _osc_weights(blend: float) -> dict[str, float]:
@@ -584,6 +609,21 @@ def _run_test_note_audio(config: dict[str, Any]) -> None:
         osc.note_off(60)
     except Exception:
         logger.exception("test_note background failed")
+
+
+def _trigger_reseed(config: dict[str, Any]) -> dict[str, Any]:
+    """Queue patch reseed for pi-ambient-synth-midi (Flues voice + state + e-ink)."""
+    app = config.get("app", {})
+    marker = app.get("marker_dir", "/var/lib/pi-ambient-synth")
+    try:
+        path = touch_reseed_request(reseed_request_path(marker))
+    except OSError as e:
+        return {"ok": False, "error": str(e)}
+    return {
+        "ok": True,
+        "message": "New patch queued — MIDI bridge will apply within ~1s",
+        "request": str(path),
+    }
 
 
 def _trigger_test_note(config: dict[str, Any]) -> dict[str, Any]:
@@ -877,6 +917,19 @@ def _html_page(status: dict[str, Any]) -> str:
     .vol-actions button:hover {{ border-color: #7ec8e3; }}
     .vol-row {{ margin-top: 0.75rem; }}
     .vol-row input[type=range] {{ width: 100%; accent-color: #7ec8e3; }}
+    .genre-bar {{
+      padding: 0.75rem 1rem; margin: 0 0 1rem; background: #0f1419;
+      border: 1px solid #2a4050; border-radius: 8px;
+    }}
+    .genre-bar h2 {{ margin: 0 0 0.5rem; font-size: 0.85rem; color: #9ab; }}
+    .genre-bar label {{ font-size: 0.72rem; color: #9ab; display: block; margin-bottom: 0.25rem; }}
+    .genre-bar select {{
+      width: 100%; max-width: 18rem; padding: 0.35rem; background: #1e2830; color: #cde;
+      border: 1px solid #3a4a55; border-radius: 4px; margin-bottom: 0.5rem;
+    }}
+    .genre-scope {{ display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin-top: 0.35rem; }}
+    .genre-scope label {{ display: inline-flex; align-items: center; gap: 0.35rem; margin: 0; cursor: pointer; }}
+    .genre-hint {{ font-size: 0.68rem; color: #667; margin: 0.35rem 0 0; }}
     .status-refresh {{ margin-left: 0.5rem; }}
   </style>
 </head>
@@ -914,9 +967,21 @@ def _html_page(status: dict[str, Any]) -> str:
           <button type="button" id="btn-vol-mute" title="Mute synth">Mute</button>
           <button type="button" id="btn-vol-full" title="Full synth volume">100%</button>
           <button type="button" id="btn-test-note" title="Beep + C4 on Pi headphones (LAN remote OK)">Test note (Pi headphones)</button>
+          <button type="button" id="btn-reseed" title="Randomize patch (genre + scope below)">New patch (reseed)</button>
+        </div>
+      </section>
+      <section class="genre-bar" aria-label="Patch genre and reseed scope">
+        <h2>Genre</h2>
+        <label for="genre-select">Sound world for new patches</label>
+        <select id="genre-select" aria-describedby="genre-hint"></select>
+        <p class="genre-hint" id="genre-hint">Reseed picks patches inside this genre unless you choose “all genres” below.</p>
+        <div class="genre-scope" role="radiogroup" aria-label="Reseed scope">
+          <label><input type="radio" name="reseed-scope" value="genre" checked> Reseed within genre</label>
+          <label><input type="radio" name="reseed-scope" value="all"> Reseed across all genres</label>
         </div>
       </section>
       <p class="muted" id="patch-title">{_escape(patch_sum)}</p>
+      <p class="muted" id="reseed-toast" hidden aria-live="polite"></p>
       <div class="sound-grid">
         <div class="sound-sigil">
           <div class="sigil-wrap">
@@ -1226,10 +1291,56 @@ def _html_page(status: dict[str, Any]) -> str:
       }});
     }}
 
+    function applyPrefsUi(prefs) {{
+      if (!prefs) return;
+      const sel = document.getElementById('genre-select');
+      if (sel && prefs.genre) sel.value = prefs.genre;
+      const hint = document.getElementById('genre-hint');
+      const g = (prefs.genres || []).find(x => x.id === prefs.genre);
+      if (hint && g && g.description) hint.textContent = g.description;
+      const scope = prefs.reseed_scope || 'genre';
+      document.querySelectorAll('input[name="reseed-scope"]').forEach(r => {{
+        r.checked = (r.value === scope);
+      }});
+    }}
+
+    async function savePrefs() {{
+      const genre = document.getElementById('genre-select').value;
+      const scopeEl = document.querySelector('input[name="reseed-scope"]:checked');
+      const reseed_scope = scopeEl ? scopeEl.value : 'genre';
+      const res = await fetch('/api/prefs', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ genre, reseed_scope }}),
+      }});
+      const data = await res.json().catch(() => ({{}}));
+      if (!res.ok || !data.ok) throw new Error(data.error || res.status);
+      if (controls) controls.patch_prefs = data.patch_prefs;
+      applyPrefsUi({{ ...data.patch_prefs, genres: controls && controls.patch_prefs && controls.patch_prefs.genres }});
+    }}
+
+    function buildGenreSelect() {{
+      const sel = document.getElementById('genre-select');
+      if (!sel || !controls || !controls.patch_prefs) return;
+      sel.innerHTML = '';
+      (controls.patch_prefs.genres || []).forEach(g => {{
+        const opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = g.label;
+        sel.appendChild(opt);
+      }});
+      applyPrefsUi(controls.patch_prefs);
+      sel.onchange = () => savePrefs().catch(err => console.warn('prefs', err));
+      document.querySelectorAll('input[name="reseed-scope"]').forEach(r => {{
+        r.onchange = () => savePrefs().catch(err => console.warn('prefs', err));
+      }});
+    }}
+
     async function loadControls() {{
       const res = await fetch('/api/controls');
       controls = await res.json();
       paramValues = {{ ...controls.patch }};
+      buildGenreSelect();
       buildWavePresets();
       buildKnobs();
       const blend = paramValues.oscillator_blend ?? 0.5;
@@ -1268,9 +1379,34 @@ def _html_page(status: dict[str, Any]) -> str:
     }});
 
     const piMonitorUrl = {monitor_url_js};
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {{
+    const onWrongHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (onWrongHost) {{
       const b = document.getElementById('wrong-host-banner');
       if (b) b.hidden = false;
+      ['btn-reseed', 'btn-test-note', 'btn-vol-mute', 'btn-vol-full'].forEach(id => {{
+        const el = document.getElementById(id);
+        if (el) {{ el.disabled = true; el.title = 'Open ' + piMonitorUrl + ' on the Pi LAN address'; }}
+      }});
+    }}
+
+    async function refreshStatus() {{
+      const res = await fetch('/api/status');
+      if (!res.ok) throw new Error('status HTTP ' + res.status);
+      const data = await res.json();
+      document.getElementById('status-time').textContent = data.collected_at || '';
+      if (data.volume) {{
+        setMasterVolUi(data.volume.master ?? 0.65);
+        const alsa = data.volume.alsa || {{}};
+        if (alsa.available) {{
+          document.getElementById('alsa-vol-block').style.display = '';
+          setAlsaVolUi(alsa.percent ?? 90);
+        }}
+      }}
+      if (data.patch_prefs) {{
+        if (!controls) controls = {{}};
+        controls.patch_prefs = data.patch_prefs;
+        applyPrefsUi(data.patch_prefs);
+      }}
     }}
 
     document.getElementById('btn-test-note').addEventListener('click', async () => {{
@@ -1287,18 +1423,40 @@ def _html_page(status: dict[str, Any]) -> str:
       }}
     }});
 
-    document.getElementById('btn-refresh-status').addEventListener('click', async () => {{
-      const res = await fetch('/api/status');
-      const data = await res.json();
-      document.getElementById('status-time').textContent = data.collected_at || '';
-      if (data.volume) {{
-        setMasterVolUi(data.volume.master ?? 0.65);
-        const alsa = data.volume.alsa || {{}};
-        if (alsa.available) {{
-          document.getElementById('alsa-vol-block').style.display = '';
-          setAlsaVolUi(alsa.percent ?? 90);
+    document.getElementById('btn-reseed').addEventListener('click', async () => {{
+      const btn = document.getElementById('btn-reseed');
+      try {{
+        if (btn) btn.disabled = true;
+        const res = await fetch('/api/reseed', {{ method: 'POST' }});
+        const data = await res.json().catch(() => ({{}}));
+        if (!res.ok || !data.ok) {{
+          alert('Reseed failed: ' + (data.error || res.status));
+          return;
         }}
+        await loadControls();
+        refreshSigil();
+        const title = document.getElementById('patch-title');
+        const toast = document.getElementById('reseed-toast');
+        if (controls && controls.patch && title)
+          title.textContent = controls.patch.name + ' | ' + (controls.patch.scale_name || '') + ' | seed=' + controls.patch.seed;
+        if (toast) {{
+          toast.hidden = false;
+          toast.textContent = 'New patch queued on Pi — check headphone sound / patch name above.';
+          setTimeout(() => {{ toast.hidden = true; }}, 5000);
+        }}
+        try {{ await refreshStatus(); }} catch (e) {{ console.warn('status refresh', e); }}
+      }} catch (e) {{
+        const hint = onWrongHost
+          ? ('Wrong address — open ' + piMonitorUrl + ' (not localhost on this computer).')
+          : ('Network error — use ' + piMonitorUrl + ' on the same Wi‑Fi.');
+        alert(hint + (e && e.message ? ' (' + e.message + ')' : ''));
+      }} finally {{
+        if (btn && !onWrongHost) btn.disabled = false;
       }}
+    }});
+
+    document.getElementById('btn-refresh-status').addEventListener('click', () => {{
+      refreshStatus().catch(err => console.warn('status', err));
     }});
 
     loadControls().catch(err => console.warn('controls load', err));
@@ -1353,6 +1511,33 @@ class MonitorHandler(BaseHTTPRequestHandler):
         if path == "/api/test_note":
             try:
                 result = _trigger_test_note(self.config)
+            except OSError as e:
+                result = {"ok": False, "error": str(e)}
+            code = 200 if result.get("ok") else 500
+            self._send(code, "application/json", json.dumps(result).encode("utf-8"))
+            return
+        if path == "/api/reseed":
+            try:
+                result = _trigger_reseed(self.config)
+            except OSError as e:
+                result = {"ok": False, "error": str(e)}
+            code = 200 if result.get("ok") else 500
+            self._send(code, "application/json", json.dumps(result).encode("utf-8"))
+            return
+        if path == "/api/prefs":
+            data = _parse_post_json(self)
+            if not data:
+                body = json.dumps({"ok": False, "error": "expected JSON body"}).encode(
+                    "utf-8"
+                )
+                self._send(400, "application/json", body)
+                return
+            try:
+                result = _apply_patch_prefs(self.config, data)
+                result["patch_prefs"]["genres"] = [
+                    {"id": g.id, "label": g.label, "description": g.description}
+                    for g in list_genres()
+                ]
             except OSError as e:
                 result = {"ok": False, "error": str(e)}
             code = 200 if result.get("ok") else 500

@@ -6,6 +6,7 @@ from typing import Any
 
 from patch_generator import PatchGenerator
 from patch_model import Patch
+from patch_prefs import load_patch_prefs
 from state_store import StateStore
 
 
@@ -21,8 +22,14 @@ def resolve_current_patch(
 
     gen = generator or PatchGenerator(config)
     patch_cfg = config.get("patch", {})
+    prefs = load_patch_prefs(config)
     evolve = patch_cfg.get("evolve_enabled", False)
     seed = patch_cfg.get("seed")
     if seed is None:
         seed = patch_cfg.get("default_seed", 1001)
-    return gen.generate(seed=int(seed), evolve_enabled=evolve)
+    return gen.generate(
+        seed=int(seed),
+        evolve_enabled=evolve,
+        genre=prefs.genre,
+        reseed_scope="genre",
+    )

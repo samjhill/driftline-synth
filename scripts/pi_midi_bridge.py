@@ -19,11 +19,18 @@ sys.path.insert(0, str(ROOT / "src"))
 from config_loader import install_root, load_config, resolve_data_path  # noqa: E402
 from logging_setup import setup_logging  # noqa: E402
 from midi_controller import MidiController, save_midi_status  # noqa: E402
-from flues_client import apply_keyboard_voice, open_flues_output  # noqa: E402
+from flues_client import (  # noqa: E402
+    apply_keyboard_voice,
+    forward_mod_wheel,
+    forward_pitch_bend,
+    open_flues_output,
+)
 from osc_client import OscClient  # noqa: E402
 from patch_generator import PatchGenerator  # noqa: E402
+from patch_prefs import load_patch_prefs  # noqa: E402
 from patch_model import Patch  # noqa: E402
 from patch_resolve import resolve_current_patch  # noqa: E402
+from reseed_trigger import consume_reseed_request, reseed_request_path  # noqa: E402
 from state_store import StateStore  # noqa: E402
 
 logger = logging.getLogger("pi_midi_bridge")
@@ -64,6 +71,7 @@ def main() -> int:
     gen = PatchGenerator(config)
     morph = float(config.get("audio", {}).get("patch_morph_seconds", 6.0))
     patch: Patch | None = resolve_current_patch(config, store, gen)
+    reseed_req = reseed_request_path(app_cfg.get("marker_dir", "/var/lib/pi-ambient-synth"))
 
     audio_mode = ""
     mode_conf = Path("/etc/pi-ambient-synth/audio-mode.conf")
@@ -149,7 +157,12 @@ def main() -> int:
         nonlocal patch
         import random
 
-        new = gen.generate(seed=random.randint(0, 2**31 - 1))
+        prefs = load_patch_prefs(config)
+        new = gen.generate(
+            seed=random.randint(0, 2**31 - 1),
+            genre=prefs.genre,
+            reseed_scope=prefs.reseed_scope,
+        )
         store.save_current(new)
         patch = new
         if flues_out is not None:
@@ -166,10 +179,20 @@ def main() -> int:
         if flues_out is not None:
             flues_out.send(mido.Message("clock"))
 
+    def on_pitch_bend(pitch: int, ch: int) -> None:
+        if flues_out is not None:
+            forward_pitch_bend(flues_out, pitch)
+
+    def on_cc(control: int, value: int, ch: int) -> None:
+        if flues_out is not None and control == midi._mod_wheel_cc:
+            forward_mod_wheel(flues_out, value)
+
     midi.on_note_on = on_note_on
     midi.on_note_off = on_note_off
     midi.on_reseed_requested = on_reseed
     midi.on_clock = on_clock
+    midi.on_pitch_bend = on_pitch_bend
+    midi.on_cc = on_cc
 
     if not midi.open():
         logger.error("No MIDI input — bridge exiting")
@@ -215,6 +238,9 @@ def main() -> int:
     jack_script = root / "scripts" / "ensure_jack_playback.sh"
     try:
         while _running:
+            if consume_reseed_request(reseed_req):
+                logger.info("Reseed requested (monitor, PiSugar button, or API)")
+                on_reseed()
             if flues_backend and flues_out is None:
                 flues_out = open_flues_output()
                 if flues_out and patch is not None:

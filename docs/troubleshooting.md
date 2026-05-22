@@ -123,7 +123,7 @@ cd ~/pi-ambient-synth
 
 9. **Sound tab “Test note” silent but journal shows `playNote`** — JACK may have dropped `SuperCollider:out → system:playback`. Run `~/pi-ambient-synth/scripts/ensure_jack_playback.sh`, raise headphone PCM (`amixer -c 0 set PCM 95%`), and use the updated **Test note** button (plays a loud beep + C4 and sets master volume to 100%).
 
-10. **SHIFT+PLAY does nothing** — KeyStep usually sends **MIDI Start** (`0xFA`), not CC 102. The **Play/Pause** button toggles: **Play** sends `start`, **Pause** sends `stop`. On the Flues path (`pi-ambient-synth-midi`), both trigger reseed when Shift is held (`midi.reseed_on_shift_stop: true`). Hold **Shift** (CC 63 ≥ 64), press **Play/Pause**, and check `journalctl -u pi-ambient-synth-midi -f` for `SHIFT+PLAY` or `SHIFT+PAUSE/STOP → reseed`. Debug: stop the bridge and run `python scripts/pi_midi_listen.py 15` while pressing Shift+Play/Pause.
+10. **Shift reseed does nothing** — **Shift is not in MIDI Control Center** on KeyStep (hardware modifier only). See **`docs/keystep_reseed.md`**. Working options: monitor **New patch (reseed)**; **PiSugar single tap** (if `pisugar-server` is running); **Shift+Play** after arp has run ~1s (extra MIDI Start while clock active); **Pause→Play** within 3s; **Hold** if it sends CC 64; or assign a custom CC in MCC (mod strip → CC 119, add to `midi.reseed_trigger_ccs`). Debug: `journalctl -u pi-ambient-synth-midi -f`.
 
 11. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
 
@@ -534,19 +534,9 @@ Another process already claimed the HAT GPIO lines (often a leftover from an ear
 
 ## Random / Shift button combo not detected
 
-The Arturia KeyStep often does **not** send a distinct "Shift" MIDI message. V1 fallbacks:
+The KeyStep **Shift** button is **not** a MIDI-assignable control in MCC. See **`docs/keystep_reseed.md`** for reseed options (monitor button, Shift+Play while arp running, Hold/CC 64, custom CC from mod strip).
 
-1. Run `python src/main.py --debug-midi` and press Play/Stop/Record with and without Shift.
-2. Note the CC numbers or SysEx/MMC bytes emitted.
-3. Update `TRANSPORT_CC` in `src/midi_controller.py` to match your firmware.
-
-Typical findings:
-
-- Transport may appear as MMC (`0xFA` play, `0xFC` stop) in SysEx/realtime.
-- Some units map transport to CC 102–104.
-- Shift may only change LED state locally without MIDI.
-
-**Workaround:** Map reseed to Hold or Tap Tempo CC once identified in monitor mode.
+To learn what your unit sends: `PI_MIDI_LOG_TRANSPORT=1` and `scripts/pi_midi_listen.py 30` on the Pi while pressing **Hold**, **Chord**, transport, and knobs.
 
 ## App crashes / no auto-restart
 
