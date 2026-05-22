@@ -17,7 +17,7 @@ USE_NATIVE_ALSA="${SC_USE_NATIVE_ALSA:-0}"
 # Pi SC 3.13: -a/-i/-o are internal bus counts, not ALSA driver; -H spawns jackdmp (XRuns). Use external jackd only.
 JACK_PERIOD="${SC_JACK_PERIOD:-4096}"
 JACK_NPERIODS="${SC_JACK_NPERIODS:-3}"
-SCSYNTH_JACK_SETTLE_SEC="${SCSYNTH_JACK_SETTLE_SEC:-4.0}"
+SCSYNTH_JACK_SETTLE_SEC="${SCSYNTH_JACK_SETTLE_SEC:-6.0}"
 SCSYNTH_STABLE_SEC="${SCSYNTH_STABLE_SEC:-3}"
 
 jack_alsa_dev() {
@@ -79,6 +79,9 @@ connect_jack_playback() {
 
 jack_ready() {
   pgrep -x jackd >/dev/null || return 1
+  if command -v jack_lsp >/dev/null 2>&1; then
+    jack_lsp >/dev/null 2>&1 && return 0
+  fi
   ls /dev/shm/jack* 1>/dev/null 2>&1
 }
 
@@ -107,13 +110,15 @@ stop_audio_stack() {
 
 wait_jack() {
   local pid="$1" i
-  sleep 1.5
-  for i in $(seq 1 50); do
-    kill -0 "$pid" 2>/dev/null || return 1
-    jack_ready && return 0
-    sleep 0.2
+  sleep 2
+  for i in $(seq 1 100); do
+    if jack_ready; then
+      return 0
+    fi
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.3
   done
-  kill -0 "$pid" 2>/dev/null
+  jack_ready
 }
 
 wait_scsynth() {
@@ -139,14 +144,16 @@ start_jack() {
   {
     echo "=== $(date -Iseconds) jackd dev=$dev rate=$RATE period=$JACK_PERIOD n=$JACK_NPERIODS ==="
     echo "cmd: jackd -m -P75 -dalsa -d$dev -r$RATE -p$JACK_PERIOD -n$JACK_NPERIODS -i0 -o2"
-    jackd -m -P75 -dalsa -d"$dev" -r"$RATE" -p"$JACK_PERIOD" -n"$JACK_NPERIODS" -i0 -o2
-  } >>"$LOG" 2>&1 &
+  } >>"$LOG"
+  # Background jackd directly (not a subshell) so wait_jack tracks the real server PID.
+  jackd -m -P75 -dalsa -d"$dev" -r"$RATE" -p"$JACK_PERIOD" -n"$JACK_NPERIODS" -i0 -o2 >>"$LOG" 2>&1 &
   pid=$!
   if wait_jack "$pid"; then
     echo "jackd ready: dev=$dev pid=$pid"
     return 0
   fi
   kill "$pid" 2>/dev/null || true
+  pkill -x jackd 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   return 1
 }
@@ -169,8 +176,8 @@ start_scsynth_client() {
   {
     echo "=== $(date -Iseconds) scsynth JACK client dev=$dev port=$PORT ==="
     echo "cmd: scsynth -u $PORT -i 2 -o 2 -R $RATE -l 1"
-    scsynth -u "$PORT" -i 2 -o 2 -R "$RATE" -l 1
-  } >>"$LOG" 2>&1 &
+  } >>"$LOG"
+  scsynth -u "$PORT" -i 2 -o 2 -R "$RATE" -l 1 >>"$LOG" 2>&1 &
   pid=$!
   if wait_scsynth "$pid"; then
     connect_jack_playback

@@ -70,8 +70,8 @@ sudo systemctl enable pi-ambient-synth-midi.service pi-ambient-synth-monitor.ser
 REMOTE_UNITS
 
 if [[ "$RESTART" == "1" ]]; then
-  echo "==> restart synth services"
-  pi_ssh "$HOST" "export PI_AMBIENT_ROOT=$REMOTE PI_SKIP_DEPLOY_TIMER=1; $REMOTE/scripts/restart_synth_services.sh"
+  echo "==> enable ambient engine + restart synth stack"
+  pi_ssh "$HOST" "export PI_AMBIENT_ROOT=$REMOTE INSTALL_DIR=$REMOTE PI_SKIP_DEPLOY_TIMER=1; $REMOTE/scripts/pi_enable_ambient_engine.sh"
   echo "==> restart monitor"
   pi_ssh "$HOST" "sudo systemctl restart pi-ambient-synth-monitor.service; sleep 1; systemctl is-active pi-ambient-synth-monitor.service"
 fi

@@ -121,12 +121,14 @@ if out:
   exit 0
 fi
 
-log "stop deploy timer + synth services"
+log "stop deploy timer + synth services (ambient / SuperCollider)"
 sudo systemctl stop pi-ambient-synth-deploy.timer 2>/dev/null || true
 sudo systemctl stop pi-ambient-synth-midi.service 2>/dev/null || true
 sudo systemctl stop pi-ambient-synth.service 2>/dev/null || true
 sudo systemctl stop supercollider.service pi-flues-synth.service 2>/dev/null || true
+sudo systemctl disable pi-flues-synth.service 2>/dev/null || true
 pkill -x sclang flues-synth 2>/dev/null || true
+echo "ambient" | sudo tee "$MARKER_DIR/audio-backend.txt" >/dev/null
 free_alsa
 sleep 2.0
 

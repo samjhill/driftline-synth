@@ -127,11 +127,10 @@ cd ~/pi-ambient-synth
 
 11. **Notes on e-ink but silent headphones** — Python may be sending OSC before SuperCollider registers handlers. Check `/var/lib/pi-ambient-synth/sc-engine-ready` exists after boot and journal has `listening on OSC port 57120`. Restart: `sudo systemctl restart supercollider && sleep 15 && sudo systemctl restart pi-ambient-synth`. Orphan `scsynth` processes are killed on each SC start in current `run_sclang_engine.sh`.
 
-12. **Audio modes (Pi 3 headphone jack)** — Two supported paths in `/etc/pi-ambient-synth/audio-mode.conf`:
-    - **`direct_keys`** — reliable KeyStep blips via `aplay` (`bash scripts/pi_enable_direct_keys.sh`). SuperCollider stopped. Tagged baseline: `v0.1.0-pi-direct-keys`.
-    - **`flues`** (recommended on Pi 3) — KeyStep → MIDI bridge → **[Flues-Synth](https://github.com/danja/flues/tree/main/flues-synth)** on `plughw:0,0`: `bash scripts/pi_enable_flues_engine.sh`, then `bash scripts/prove_flues_engine_pi.sh`. No SuperCollider/JACK. Bridge remaps MPE to MIDI channel 1 and **formant program 3** (pitched pad). If every key sounds like the same hiss: disable **MPE** in Arturia MIDI Control Center (single channel), run `bash scripts/connect_midi_to_flues.sh` (disconnects Flues auto-connect to KeyStep), and confirm `journalctl -u pi-ambient-synth-midi -f` shows `flues=` note numbers changing per key.
-    - **`ambient`** — KeyStep → OSC → SuperCollider (legacy; often silent on Pi headphones): `bash scripts/pi_enable_ambient_engine.sh`.
-    - **`direct_keys`** — short `aplay` blips only: `bash scripts/pi_enable_direct_keys.sh`.
+12. **Audio modes (Pi 3 headphone jack)** — Set in `/etc/pi-ambient-synth/audio-mode.conf` (fresh install defaults to **`ambient`**):
+    - **`ambient`** (production) — KeyStep → `pi-ambient-synth-midi` → OSC → **SuperCollider** on `plughw:0,0`: `bash scripts/pi_enable_ambient_engine.sh`, then `bash scripts/prove_ambient_engine_pi.sh` or `bash scripts/verify_audible_pi.sh`. Journal should show `bridge → OSC note_on` with **different `note=` per key** and `playNote: midi` in `supercollider`. If you still hear identical noise per key, confirm `pi-flues-synth` is **stopped** and `aconnect -l` has **no** KeyStep→Flues link (`scripts/disconnect_midi_from_flues.sh`).
+    - **`direct_keys`** — short `aplay` blips only (no SC): `bash scripts/pi_enable_direct_keys.sh`.
+    - **`flues`** (experimental) — Flues-Synth instead of SC: `bash scripts/pi_enable_flues_engine.sh`. Same hiss on every key usually means MPE on ch 15 or KeyStep wired directly to Flues; use `connect_midi_to_flues.sh` and disable MPE in Arturia MCC.
 
 ### One-command verify (audio + engine)
 

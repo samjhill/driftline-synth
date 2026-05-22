@@ -137,6 +137,12 @@ echo "==> Installing systemd unit files..."
 # shellcheck source=scripts/lib/audio_stack.sh
 source "$ROOT/scripts/lib/audio_stack.sh"
 install_sc_systemd_units "$ROOT"
+sudo mkdir -p /etc/pi-ambient-synth
+if [[ -f "$ROOT/deploy/pi-audio-mode-ambient.conf" ]]; then
+  sudo cp "$ROOT/deploy/pi-audio-mode-ambient.conf" /etc/pi-ambient-synth/audio-mode.conf
+elif [[ -f "$ROOT/deploy/pi-audio-mode.conf" ]]; then
+  sudo cp "$ROOT/deploy/pi-audio-mode.conf" /etc/pi-ambient-synth/audio-mode.conf
+fi
 sudo cp "$ROOT/systemd/pi-ambient-synth-deploy.service" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-deploy.timer" /etc/systemd/system/
 sudo cp "$ROOT/systemd/pi-ambient-synth-boot-display.service" /etc/systemd/system/

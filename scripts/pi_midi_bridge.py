@@ -80,9 +80,19 @@ def main() -> int:
     mode_conf = Path("/etc/pi-ambient-synth/audio-mode.conf")
     if mode_conf.is_file():
         audio_mode = mode_conf.read_text(encoding="utf-8")
-    flues_backend = os.environ.get("PI_MIDI_BACKEND", "").strip().lower() == "flues" or (
-        "AUDIO_MODE=flues" in audio_mode
+    env_backend = os.environ.get("PI_MIDI_BACKEND", "").strip().lower()
+    flues_backend = env_backend == "flues" or (
+        env_backend != "osc" and "AUDIO_MODE=flues" in audio_mode
     )
+    if flues_backend:
+        logger.info("AUDIO_MODE=flues (MIDI → Flues-Synth)")
+    elif os.environ.get("PI_DIRECT_ALSA_KEYS", "").strip().lower() in ("1", "true", "yes"):
+        logger.info("AUDIO_MODE=direct_keys (aplay blips)")
+    else:
+        logger.info("AUDIO_MODE=ambient (MIDI → OSC → SuperCollider)")
+        disconnect_sh = root / "scripts" / "disconnect_midi_from_flues.sh"
+        if disconnect_sh.is_file():
+            subprocess.run(["bash", str(disconnect_sh)], check=False, timeout=8)
 
     osc: OscClient | None = None
     flues_out = None

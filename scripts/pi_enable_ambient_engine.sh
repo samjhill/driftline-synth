@@ -14,9 +14,12 @@ else
   echo "AUDIO_MODE=ambient" | sudo tee "$CONF" >/dev/null
 fi
 
-sudo rm -f "$DROPIN" /etc/systemd/system/pi-ambient-synth-midi.service.d/ambient-hybrid.conf 2>/dev/null || true
-sudo systemctl stop pi-ambient-alsa-drone.service 2>/dev/null || true
-sudo systemctl disable pi-ambient-alsa-drone.service 2>/dev/null || true
+sudo rm -f "$DROPIN" \
+  /etc/systemd/system/pi-ambient-synth-midi.service.d/ambient-hybrid.conf \
+  /etc/systemd/system/pi-ambient-synth-midi.service.d/flues.conf \
+  /etc/systemd/system/pi-ambient-synth.service.d/flues.conf 2>/dev/null || true
+sudo systemctl stop pi-flues-synth.service pi-ambient-alsa-drone.service 2>/dev/null || true
+sudo systemctl disable pi-flues-synth.service pi-ambient-alsa-drone.service 2>/dev/null || true
 
 # shellcheck source=scripts/lib/audio_stack.sh
 source "$INSTALL_DIR/scripts/lib/audio_stack.sh"
