@@ -19,6 +19,9 @@ Environment=JACK_NO_START_SERVER=1
 # ALSA output (Pi headphone jack). "default" fails on headless Bookworm (error -524).
 Environment=SC_AUDIO_DEVICE=plughw:0,0
 Environment=SC_HEADLESS_ALSA=1
+Environment=PI_SKIP_TEXTURE_DRONE=1
+Environment=PI_SIMPLE_KEYBOARD=1
+Environment=PI_NO_STARTUP_CHIME=1
 # env(1) forces headless Qt; unit Environment alone may be ignored by some sclang builds.
 ExecStart=/home/pi/pi-ambient-synth/scripts/run_sclang_engine.sh
 Restart=on-failure

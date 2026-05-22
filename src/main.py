@@ -111,6 +111,16 @@ class PiAmbientSynth:
             self.state_store.save_current(patch)
         return patch
 
+    def _use_fluidsynth(self) -> bool:
+        if os.environ.get("PI_SKIP_SC", "").strip().lower() in ("1", "true", "yes"):
+            return True
+        if self.config.get("audio", {}).get("backend", "").strip().lower() == "fluidsynth":
+            return True
+        conf = Path("/etc/pi-ambient-synth/audio-mode.conf")
+        if conf.is_file() and "AUDIO_MODE=fluidsynth" in conf.read_text(encoding="utf-8"):
+            return True
+        return False
+
     def _wait_for_sc_engine(self, timeout: float = 55.0) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -158,8 +168,11 @@ class PiAmbientSynth:
                 listening=False,
                 state="starting",
             )
-        self._wait_for_sc_engine()
-        self.osc.send_patch(self._patch)
+        if self._use_fluidsynth():
+            logger.info("FluidSynth V1 — skipping SuperCollider (notes via pi_midi_bridge)")
+        else:
+            self._wait_for_sc_engine()
+            self.osc.send_patch(self._patch)
         self._update_display(self._patch)
         if os.environ.get("PI_NO_MIDI", "").strip() in ("1", "true", "yes"):
             logger.info(
@@ -336,6 +349,16 @@ class PiAmbientSynth:
             time.sleep(0.35)
 
         self.state_store.save_current(self._patch)
+        if self._use_fluidsynth():
+            from reseed_trigger import touch_reseed_request
+
+            touch_reseed_request(self._marker_dir / "reseed.request")
+            self._update_display(self._patch)
+            logger.info(
+                "Reseeded (FluidSynth): %s — MIDI bridge applies GM program",
+                self._patch.summary(),
+            )
+            return
         self.osc.reseed_transition(2.0)
         self.osc.reseed(seed)
         morph = max(self._reseed_morph, 7.0)

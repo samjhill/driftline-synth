@@ -3,8 +3,15 @@
 set -euo pipefail
 
 ROOT="${PI_AMBIENT_ROOT:-/home/pi/pi-ambient-synth}"
-SCD="${ROOT}/synth/ambient_engine.scd"
+# V1 default: minimal warm-pad engine. Set PI_LEGACY_ENGINE=1 for ambient_engine.scd.
+if [[ "${PI_LEGACY_ENGINE:-}" == "1" ]]; then
+  SCD="${ROOT}/synth/ambient_engine.scd"
+else
+  SCD="${ROOT}/synth/minimal_ambient_engine.scd"
+fi
 READY_MARKER="${PI_SC_READY_MARKER:-/var/lib/pi-ambient-synth/sc-engine-ready}"
+JACK_LINKED_MARKER="${PI_JACK_LINKED_MARKER:-/var/lib/pi-ambient-synth/jack-playback-linked}"
+MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 
 export HOME="${HOME:-/home/pi}"
 export QT_QPA_PLATFORM=offscreen
@@ -17,24 +24,32 @@ export JACK_NO_START_SERVER="${JACK_NO_START_SERVER:-1}"
 # ALSA device name from `aplay -L` (e.g. plughw:0,0). Empty makes scsynth try JACK.
 export SC_AUDIO_DEVICE="${SC_AUDIO_DEVICE:-plughw:0,0}"
 export SC_HEADLESS_ALSA="${SC_HEADLESS_ALSA:-1}"
-rm -f "$READY_MARKER" 2>/dev/null || true
+export PI_NO_STARTUP_CHIME="${PI_NO_STARTUP_CHIME:-1}"
+rm -f "$READY_MARKER" "$JACK_LINKED_MARKER" 2>/dev/null || true
 pkill -x sclang 2>/dev/null || true
 sleep 0.5
 "$ROOT/scripts/start_scsynth_alsa.sh" || exit 1
-
-DRIVER_FILE="${PI_SC_DRIVER_FILE:-/var/lib/pi-ambient-synth/scsynth_audio.conf}"
-if [[ -f "$DRIVER_FILE" ]] && grep -q '^SC_SYNTH_DRIVER=alsa$' "$DRIVER_FILE" 2>/dev/null; then
-  echo "scsynth on native ALSA — skipping JACK playback reconnect loop"
-else
-  # SC_JACK_DEFAULT_OUTPUTS often does not stick after sclang attaches; reconnect on a schedule.
+# Inline JACK link only (no ensure_jack_playback.sh loop in minimal path).
+link_jack_playback() {
+  local out1 out2
+  command -v jack_connect >/dev/null || return 0
+  out1="$(jack_lsp 2>/dev/null | grep -E 'SuperCollider:out_1$' | head -1 || true)"
+  out2="$(jack_lsp 2>/dev/null | grep -E 'SuperCollider:out_2$' | head -1 || true)"
+  [[ -n "$out1" ]] && jack_connect "$out1" system:playback_1 2>/dev/null || true
+  [[ -n "$out1" ]] && jack_connect "$out1" system:playback_2 2>/dev/null || true
+  [[ -n "$out2" ]] && jack_connect "$out2" system:playback_2 2>/dev/null || true
+}
+link_jack_playback || true
+if [[ "${PI_LEGACY_ENGINE:-}" == "1" ]] && [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]]; then
+  JACK_CONNECT_RETRY_SEC=12 "$ROOT/scripts/ensure_jack_playback.sh" || true
   (
     for delay in 8 15 22 30 40 55 75; do
       sleep "$delay"
-      [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
+      "$ROOT/scripts/ensure_jack_playback.sh" || true
     done
     while true; do
       sleep 25
-      [[ -x "$ROOT/scripts/ensure_jack_playback.sh" ]] && "$ROOT/scripts/ensure_jack_playback.sh" || true
+      "$ROOT/scripts/ensure_jack_playback.sh" || true
     done
   ) &
 fi

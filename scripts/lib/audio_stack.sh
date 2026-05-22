@@ -74,7 +74,15 @@ Environment=SC_JACK_DEVICE=plughw:0,0
 Environment=SC_JACK_PERIOD=4096
 Environment=SC_JACK_NPERIODS=3
 Environment=PI_SKIP_TEXTURE_DRONE=1
+Environment=PI_SIMPLE_KEYBOARD=1
+Environment=PI_NO_STARTUP_CHIME=1
+Environment=SC_JACK_DEFAULT_OUTPUTS=system:playback_1,system:playback_2
 EOF
+  if [[ -f "$root/systemd/pi-ambient-boot-validate.service" ]]; then
+    sudo cp "$root/systemd/pi-ambient-boot-validate.service" /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable pi-ambient-boot-validate.service 2>/dev/null || true
+  fi
   sudo rm -f /etc/systemd/system/pi-ambient-synth.service.d/flues.conf \
     /etc/systemd/system/pi-ambient-synth-midi.service.d/flues.conf 2>/dev/null || true
   sudo systemctl disable pi-flues-synth.service 2>/dev/null || true

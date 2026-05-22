@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic JACK playback link check (Pi headphones)
+
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=12
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target

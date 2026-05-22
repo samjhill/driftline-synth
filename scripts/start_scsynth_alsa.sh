@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pi SC 3.13: external jackd + scsynth JACK client (no scsynth -H — that embeds jackdmp).
+# Pi production audio: one stack only — external jackd (ALSA) + scsynth JACK client.
+# Do not use scsynth -H (embeds jackdmp on SC 3.13) or alternate ALSA-only paths.
 set -euo pipefail
 
 ulimit -l unlimited 2>/dev/null || true
@@ -13,8 +14,7 @@ LOG="${SCSYNTH_START_LOG:-/tmp/scsynth-alsa-start.log}"
 MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}"
 DRIVER_FILE="$MARKER_DIR/scsynth_audio.conf"
 ALSA_BUF="${SC_ALSA_BUFFER:-4096}"
-USE_NATIVE_ALSA="${SC_USE_NATIVE_ALSA:-0}"
-# Pi SC 3.13: -a/-i/-o are internal bus counts, not ALSA driver; -H spawns jackdmp (XRuns). Use external jackd only.
+# Pi SC 3.13: -a/-i/-o are internal bus counts, not ALSA driver; -H spawns jackdmp (XRuns).
 JACK_PERIOD="${SC_JACK_PERIOD:-4096}"
 JACK_NPERIODS="${SC_JACK_NPERIODS:-3}"
 SCSYNTH_JACK_SETTLE_SEC="${SCSYNTH_JACK_SETTLE_SEC:-6.0}"
@@ -145,6 +145,7 @@ start_jack() {
     echo "=== $(date -Iseconds) jackd dev=$dev rate=$RATE period=$JACK_PERIOD n=$JACK_NPERIODS ==="
     echo "cmd: jackd -m -P75 -dalsa -d$dev -r$RATE -p$JACK_PERIOD -n$JACK_NPERIODS -i0 -o2"
   } >>"$LOG"
+  unset JACK_DEFAULT_SERVER
   # Background jackd directly (not a subshell) so wait_jack tracks the real server PID.
   jackd -m -P75 -dalsa -d"$dev" -r"$RATE" -p"$JACK_PERIOD" -n"$JACK_NPERIODS" -i0 -o2 >>"$LOG" 2>&1 &
   pid=$!
@@ -161,6 +162,8 @@ start_jack() {
 start_scsynth_client() {
   local dev="$1" pid
   export JACK_NO_START_SERVER=1
+  export SC_JACK_DEFAULT_INPUTS="${SC_JACK_DEFAULT_INPUTS:-}"
+  export SC_JACK_DEFAULT_OUTPUTS="${SC_JACK_DEFAULT_OUTPUTS:-system:playback_1,system:playback_2}"
 
   jack_ready || return 1
   sleep "$SCSYNTH_JACK_SETTLE_SEC"
@@ -175,12 +178,20 @@ start_scsynth_client() {
   # -l is language; do not pass -z (also language on Pi SC 3.13, not zeroconf off).
   {
     echo "=== $(date -Iseconds) scsynth JACK client dev=$dev port=$PORT ==="
-    echo "cmd: scsynth -u $PORT -i 2 -o 2 -R $RATE -l 1"
+    echo "cmd: scsynth -u $PORT -a 32 -i 2 -o 2 -R $RATE -l 1"
   } >>"$LOG"
-  scsynth -u "$PORT" -i 2 -o 2 -R "$RATE" -l 1 >>"$LOG" 2>&1 &
+  scsynth -u "$PORT" -a 32 -i 2 -o 2 -R "$RATE" -l 1 >>"$LOG" 2>&1 &
   pid=$!
   if wait_scsynth "$pid"; then
-    connect_jack_playback
+    local i
+    for i in $(seq 1 20); do
+      connect_jack_playback
+      if command -v jack_lsp >/dev/null 2>&1 \
+        && jack_lsp -c 2>/dev/null | grep -q 'SuperCollider:out_1'; then
+        break
+      fi
+      sleep 0.25
+    done
     mkdir -p "$MARKER_DIR"
     {
       echo "SC_SYNTH_DRIVER=jack"
@@ -222,7 +233,7 @@ mkdir -p "$(dirname "$LOG")"
 
 echo "scsynth: $(scsynth -v 2>&1 | head -1 || true)"
 echo "jackd: $(command -v jackd || echo missing)"
-echo "Note: Pi SC 3.13 — external jackd + scsynth JACK client" | tee -a "$LOG"
+echo "Note: Pi production = jackd (alsa) + scsynth JACK client only" | tee -a "$LOG"
 
 stop_audio_stack
 

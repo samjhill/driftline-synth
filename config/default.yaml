@@ -57,10 +57,18 @@ osc:
   python_listen_port: 57121
 
 audio:
-  # Pi production: /etc/pi-ambient-synth/audio-mode.conf → AUDIO_MODE=ambient (SuperCollider)
-  backend: "supercollider"  # supercollider | flues | direct_keys
+  # Pi V1: /etc/pi-ambient-synth/audio-mode.conf → AUDIO_MODE=fluidsynth
+  backend: "fluidsynth"  # fluidsynth | supercollider | flues | direct_keys
   default_volume: 0.85
   patch_morph_seconds: 6.0
+
+# FluidSynth V1 — direct ALSA to headphone jack (no JACK, no SuperCollider)
+fluidsynth:
+  alsa_device: "plughw:0,0"
+  soundfont: "/usr/share/sounds/sf2/FluidR3_GM.sf2"
+  gain: 0.85
+  channel: 0
+  programs: [89, 90, 88, 48, 52, 95, 91]
 
 # Flues KeyStep voice: formant (pitched pad); physical = PM noise exciter (poor on Pi headphones).
 flues:
@@ -103,11 +111,13 @@ eink:
   height: 122
   rotate: 0
   update_on_reseed: true
-  partial_refresh: true
-  full_refresh_boot: false
+  partial_refresh: false
+  full_refresh_boot: true
+  busy_active_high: true
   show_text_labels: true
-  show_playing_note: true
-  note_refresh_seconds: 0.5
+  # Live note labels block the panel ~25s on Pi — keep off until e-ink is stable.
+  show_playing_note: false
+  note_refresh_seconds: 1.2
   clear_on_shutdown: false
 
 visual:

@@ -1,0 +1,4 @@
+# Pi headphone / SSH smoke: skip Qt-heavy class library paths (WebEngine breaks headless JACK).
+excludePaths:
+  - "/usr/share/SuperCollider/SCClassLibrary/scide_scqt"
+  - "/usr/share/SuperCollider/SCClassLibrary/GUI"

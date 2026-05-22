@@ -16,7 +16,15 @@ def midi_to_hz(note: int) -> float:
     return 440.0 * (2.0 ** ((note - 69) / 12.0))
 
 
-def write_blip_wav(path: Path, *, freq: float, sample_rate: int, duration: float, amp: float) -> None:
+def write_blip_wav(
+    path: Path,
+    *,
+    freq: float,
+    sample_rate: int,
+    duration: float,
+    amp: float,
+    pad: bool = False,
+) -> None:
     n = max(1, int(sample_rate * duration))
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(1)
@@ -24,18 +32,34 @@ def write_blip_wav(path: Path, *, freq: float, sample_rate: int, duration: float
         wf.setframerate(sample_rate)
         for i in range(n):
             t = i / sample_rate
-            env = min(1.0, t / 0.008) * min(1.0, (duration - t) / 0.04)
-            sample = int(max(-32767, min(32767, env * amp * math.sin(2.0 * math.pi * freq * t) * 32767)))
+            if pad:
+                env = min(1.0, t / 0.04) * min(1.0, (duration - t) / 0.12)
+                sig = (
+                    0.55 * math.sin(2.0 * math.pi * freq * t)
+                    + 0.3 * math.sin(2.0 * math.pi * freq * 1.002 * t)
+                    + 0.15 * math.sin(2.0 * math.pi * (freq / 2.0) * t)
+                )
+            else:
+                env = min(1.0, t / 0.008) * min(1.0, (duration - t) / 0.04)
+                sig = math.sin(2.0 * math.pi * freq * t)
+            sample = int(max(-32767, min(32767, env * amp * sig * 32767)))
             wf.writeframes(sample.to_bytes(2, "little", signed=True))
 
 
-def play(device: str, note: int, velocity: int, duration: float) -> int:
+def play(device: str, note: int, velocity: int, duration: float, *, pad: bool = False) -> int:
     freq = midi_to_hz(note)
-    amp = 0.25 + (velocity / 127.0) * 0.55
+    amp = 0.4 + (velocity / 127.0) * 0.55
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         path = Path(tmp.name)
     try:
-        write_blip_wav(path, freq=freq, sample_rate=48000, duration=duration, amp=amp)
+        write_blip_wav(
+            path,
+            freq=freq,
+            sample_rate=48000,
+            duration=duration,
+            amp=amp,
+            pad=pad,
+        )
         subprocess.run(["aplay", "-q", "-D", device, str(path)], check=True)
         return 0
     except (FileNotFoundError, subprocess.CalledProcessError) as e:
@@ -51,8 +75,9 @@ def main() -> int:
     p.add_argument("velocity", type=int, nargs="?", default=100)
     p.add_argument("-D", "--device", default="default")
     p.add_argument("-d", "--duration", type=float, default=0.14)
+    p.add_argument("--pad", action="store_true", help="Softer multi-osc tone (~ambient)")
     args = p.parse_args()
-    return play(args.device, args.note, args.velocity, args.duration)
+    return play(args.device, args.note, args.velocity, args.duration, pad=args.pad)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pi: prove full ambient stack (native ALSA scsynth + engine + OSC note).
+# Pi: prove full ambient stack (jackd + scsynth + engine + OSC note).
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"

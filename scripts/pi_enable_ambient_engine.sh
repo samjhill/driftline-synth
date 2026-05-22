@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enable full SuperCollider ambient engine on Pi headphone jack (native ALSA scsynth).
+# Enable full SuperCollider ambient engine on Pi headphone jack (jackd + scsynth).
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
@@ -15,9 +15,10 @@ else
 fi
 
 sudo rm -f "$DROPIN" \
-  /etc/systemd/system/pi-ambient-synth-midi.service.d/ambient-hybrid.conf \
   /etc/systemd/system/pi-ambient-synth-midi.service.d/flues.conf \
   /etc/systemd/system/pi-ambient-synth.service.d/flues.conf 2>/dev/null || true
+# Hybrid blips steal focus from SC on headphones — keep OSC-only unless debugging.
+sudo rm -f /etc/systemd/system/pi-ambient-synth-midi.service.d/ambient-hybrid.conf 2>/dev/null || true
 sudo systemctl stop pi-flues-synth.service pi-ambient-alsa-drone.service 2>/dev/null || true
 sudo systemctl disable pi-flues-synth.service pi-ambient-alsa-drone.service 2>/dev/null || true
 
@@ -37,7 +38,22 @@ Environment=SC_JACK_DEVICE=plughw:0,0
 Environment=SC_JACK_PERIOD=4096
 Environment=SC_JACK_NPERIODS=3
 Environment=PI_SKIP_TEXTURE_DRONE=1
+Environment=PI_SIMPLE_KEYBOARD=1
+Environment=PI_NO_STARTUP_CHIME=1
+Environment=SC_JACK_DEFAULT_OUTPUTS=system:playback_1,system:playback_2
 EOF
+if [[ -f "$INSTALL_DIR/systemd/pi-ambient-boot-validate.service" ]]; then
+  sudo cp "$INSTALL_DIR/systemd/pi-ambient-boot-validate.service" /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable pi-ambient-boot-validate.service 2>/dev/null || true
+fi
+
+if [[ -f "$INSTALL_DIR/systemd/pi-ambient-jack-playback.service" ]]; then
+  sudo cp "$INSTALL_DIR/systemd/pi-ambient-jack-playback.service" \
+    "$INSTALL_DIR/systemd/pi-ambient-jack-playback.timer" /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now pi-ambient-jack-playback.timer 2>/dev/null || true
+fi
 
 sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth-midi.service" /etc/systemd/system/
 sudo cp "$INSTALL_DIR/systemd/pi-ambient-synth.service" /etc/systemd/system/ 2>/dev/null || true
@@ -49,6 +65,9 @@ if [[ -f "$INSTALL_DIR/deploy/systemd/pi-ambient-synth.supercollider.conf" ]]; t
 fi
 sudo systemctl enable supercollider.service 2>/dev/null || true
 sudo systemctl daemon-reload
+
+pkill -f show_status.py 2>/dev/null || true
+rm -f /var/lib/pi-ambient-synth/eink.lock 2>/dev/null || true
 
 echo "==> ambient mode enabled ($CONF); restarting synth stack"
 if [[ -x "$INSTALL_DIR/scripts/restart_synth_services.sh" ]]; then
@@ -63,4 +82,11 @@ sleep 2
 if [[ -x "$INSTALL_DIR/scripts/prove_ambient_engine_pi.sh" ]]; then
   "$INSTALL_DIR/scripts/prove_ambient_engine_pi.sh" || true
 fi
-echo "==> KeyStep → OSC → SuperCollider voices (no constant drone, no aplay blips). Play keys on 3.5 mm jack."
+echo "==> KeyStep → OSC → SuperCollider piAmbientVoice (PI_ALSA_KEY_TONE=0). Validate: scripts/validate_real_synth_path.sh"
+if [[ -x "$INSTALL_DIR/.venv/bin/python" && -f "$INSTALL_DIR/scripts/show_status.py" ]]; then
+  echo "==> e-ink patch screen (may take ~60s)..."
+  sudo -u pi env HOME=/home/pi GPIOZERO_PIN_FACTORY=lgpio PYTHONPATH="$INSTALL_DIR/src" \
+    EINK_LOG=/var/log/pi-ambient-synth-eink.log \
+    "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/scripts/show_status.py" --restore-patch \
+    >>/var/log/pi-ambient-synth-eink.log 2>&1 || true
+fi

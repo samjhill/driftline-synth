@@ -63,9 +63,11 @@ aplay -l 2>/dev/null || true
 echo "==> ALSA default (aplay -L, first lines):"
 aplay -L 2>/dev/null | head -15 || true
 
-if systemctl is-active supercollider.service &>/dev/null; then
+if [[ "${1:-}" == "--destructive-audio-test" ]] && systemctl is-active supercollider.service &>/dev/null; then
   echo "    Stopping supercollider for speaker-test (frees ALSA device)"
   sudo systemctl stop supercollider.service 2>/dev/null || true
+elif systemctl is-active supercollider.service &>/dev/null; then
+  echo "    Keeping supercollider running (pass --destructive-audio-test to stop SC for speaker-test)"
 fi
 
 CHILL_TEST="$ROOT/scripts/play_headphone_test.py"

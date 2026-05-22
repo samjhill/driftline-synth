@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Full Pi audio reset: jackd+scsynth+sclang, JACK links, loud test (run on the Pi).
+# Usage: ./scripts/pi_fix_audio_now.sh --destructive-audio-test
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
 PY="${INSTALL_DIR}/.venv/bin/python"
+# shellcheck source=scripts/lib/destructive_audio_guard.sh
+source "$INSTALL_DIR/scripts/lib/destructive_audio_guard.sh"
+require_destructive_audio_test "$@"
 
 log() { echo "$(date -Iseconds) [fix-audio] $*"; }
 

@@ -46,6 +46,14 @@ pi_rsync "$ROOT/config/default.yaml" "$HOST:$REMOTE/config/"
 pi_rsync "$ROOT/deploy/" "$HOST:$REMOTE/deploy/"
 pi_rsync "$ROOT/systemd/" "$HOST:$REMOTE/systemd/"
 
+pi_ssh "$HOST" "bash -s" <<REMOTE_PULL
+set -euo pipefail
+INSTALL="$REMOTE"
+if [[ -x "\$INSTALL/scripts/disable_github_auto_pull.sh" ]]; then
+  "\$INSTALL/scripts/disable_github_auto_pull.sh" || true
+fi
+REMOTE_PULL
+
 pi_ssh "$HOST" "chmod +x $REMOTE/scripts/*.sh $REMOTE/bin/* 2>/dev/null || true"
 pi_ssh "$HOST" "INSTALL_DIR=$REMOTE $REMOTE/scripts/install_flues_synth.sh" 2>/dev/null || true
 

@@ -16,6 +16,12 @@ keystep="$(printf '%s\n' "$list" | awk '
   /client [0-9]+:.*[Kk]ey[Ss]tep/ { client=$2; gsub(":", "", client); print client ":0"; exit }
 ')"
 
+if pgrep -x flues-synth >/dev/null 2>&1; then
+  pkill -x flues-synth 2>/dev/null || true
+  sleep 0.3
+  log "stopped flues-synth (must not hold plughw:0,0 with jackd)"
+fi
+
 if [[ -z "$flues" ]]; then
   exit 0
 fi

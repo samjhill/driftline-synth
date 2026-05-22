@@ -1,7 +1,7 @@
 [Unit]
 Description=Pi Ambient Synth MIDI bridge (KeyStep → OSC or direct ALSA)
 After=sound.target
-Wants=supercollider.service
+# SuperCollider optional; fluidsynth drop-in sets Conflicts=supercollider.service
 StartLimitIntervalSec=120
 StartLimitBurst=6
 
@@ -12,7 +12,10 @@ WorkingDirectory=/home/pi/pi-ambient-synth
 Environment=HOME=/home/pi
 Environment=PI_MIDI_MAIN_THREAD=1
 Environment=PI_DIRECT_ALSA_KEYS=0
+Environment=PI_ALSA_KEY_TONE=0
+Environment=PI_ALSA_KEY_TONE_FALLBACK=0
 Environment=LOG_LEVEL=INFO
+Environment=GPIOZERO_PIN_FACTORY=lgpio
 # direct_keys drop-in: deploy/systemd/pi-ambient-synth-midi.direct-keys.conf (pi_enable_direct_keys.sh)
 ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/scripts/pi_midi_bridge.py
 Restart=always

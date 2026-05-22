@@ -8,3 +8,4 @@ spidev
 RPi.GPIO
 gpiozero
 # lgpio: use system package (python3-lgpio via apt), not pip — needs swig to build in venv
+# Optional on Pi: pip install pyfluidsynth (apt: fluidsynth fluid-soundfont-gm libfluidsynth-dev)

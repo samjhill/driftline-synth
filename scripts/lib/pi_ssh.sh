@@ -104,3 +104,19 @@ pi_rsync() {
 pi_ssh_try_batch() {
   pi_ssh -o BatchMode=yes -o ConnectTimeout=8 "$@" 'echo ok' 2>/dev/null
 }
+
+# Run a remote command with sudo (-n first, then -S when PI_SSH_PASSWORD is available).
+pi_ssh_sudo() {
+  local host="${1:?host required}"
+  local remote_cmd="${2:?command required}"
+  local qcmd
+  qcmd="$(printf '%q' "$remote_cmd")"
+  if pi_ssh "$host" "sudo -n bash -lc $qcmd" 2>/dev/null; then
+    return 0
+  fi
+  if [[ "${PI_SSH_HAS_SAVED_PASS:-0}" == "1" ]] && [[ -n "${PI_SSH_PASSWORD:-}" ]]; then
+    pi_ssh "$host" "printf '%s\n' '$PI_SSH_PASSWORD' | sudo -S -p '' bash -lc $qcmd"
+    return $?
+  fi
+  pi_ssh "$host" "sudo bash -lc $qcmd"
+}

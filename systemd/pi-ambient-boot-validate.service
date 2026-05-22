@@ -1,0 +1,18 @@
+[Unit]
+Description=Validate real SuperCollider synth path after boot
+After=supercollider.service pi-ambient-synth-midi.service
+Wants=supercollider.service pi-ambient-synth-midi.service
+ConditionPathExists=/home/pi/pi-ambient-synth/scripts/validate_real_synth_path.sh
+
+[Service]
+Type=oneshot
+User=pi
+Environment=HOME=/home/pi
+Environment=INSTALL_DIR=/home/pi/pi-ambient-synth
+ExecStartPre=/bin/sleep 8
+ExecStart=/home/pi/pi-ambient-synth/scripts/validate_real_synth_path.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -321,6 +321,7 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
             "alsa": _read_alsa_pcm(),
         },
         "patch_prefs": _patch_prefs_payload(config),
+        "audio_mode_hint": _pi_audio_mode_hint(),
         "journal_logs": journal_logs,
         "journal_errors": journal_errors,
         "status_snippets": status_snippets,
@@ -548,65 +549,57 @@ def _pi_direct_keys_mode() -> bool:
     return False
 
 
+def _pi_audio_mode_hint() -> str:
+    conf = Path("/etc/pi-ambient-synth/audio-mode.conf")
+    mode = ""
+    if conf.is_file():
+        try:
+            mode = conf.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    hybrid = Path(
+        "/etc/systemd/system/pi-ambient-synth-midi.service.d/ambient-hybrid.conf"
+    ).is_file()
+    if "direct_keys" in mode:
+        return (
+            "KeyStep uses <strong>direct ALSA</strong> blips (SuperCollider/JACK off)."
+        )
+    if "flues" in mode:
+        return "KeyStep → <strong>Flues-Synth</strong>."
+    if hybrid or "ambient" in mode:
+        return (
+            "KeyStep → <strong>hybrid</strong>: ALSA blip per key + "
+            "SuperCollider ambient pad (OSC). JACK watchdog keeps headphones linked."
+        )
+    return "KeyStep → SuperCollider ambient (OSC)."
+
+
 def _run_test_note_audio(config: dict[str, Any]) -> None:
-    """Background: Pi headphone test (direct ALSA blip or JACK/OSC stack)."""
+    """Background: OSC proof_note only — never stops production synth services."""
     try:
         root = install_root()
-        py = root / ".venv/bin/python"
-        blip = root / "scripts" / "play_keyboard_blip.py"
-        if _pi_direct_keys_mode() and py.is_file() and blip.is_file():
-            _set_alsa_pcm(100, mute=False)
-            subprocess.run(
-                [str(py), str(blip), "60", "127", "-D", "hw:0,0", "-d", "0.4"],
-                check=False,
-                timeout=8,
-                cwd=str(root),
+        if _service_state("supercollider.service") != "active":
+            logger.error(
+                "Test note refused: supercollider.service is not active "
+                "(restart: sudo systemctl restart supercollider pi-ambient-synth-midi)"
             )
             return
-        tone = root / "scripts" / "pi_headphone_tone_only.sh"
-        if tone.is_file():
+        proof_py = root / "scripts" / "send_real_synth_proof.py"
+        py = root / ".venv/bin/python"
+        if py.is_file() and proof_py.is_file():
             subprocess.run(
-                ["bash", str(tone)],
+                [str(py), str(proof_py), "proof_note", "--wait", "2.2"],
                 check=False,
-                timeout=120,
+                timeout=15,
                 cwd=str(root),
-                start_new_session=True,
             )
-        else:
-            _set_alsa_pcm(100, mute=False)
-            py = root / ".venv" / "bin" / "python"
-            hp_test = root / "scripts" / "play_headphone_test.py"
-            if py.is_file() and hp_test.is_file():
-                subprocess.run(
-                    [str(py), str(hp_test), "-D", "plughw:0,0", "-r", "48000", "-d", "2"],
-                    check=False,
-                    timeout=12,
-                    cwd=str(root),
-                )
-        jack_sh = root / "scripts" / "ensure_jack_playback.sh"
-        if jack_sh.is_file():
-            subprocess.run(["bash", str(jack_sh)], check=False, timeout=8)
-        subprocess.run(
-            ["sudo", "systemctl", "start", "pi-ambient-synth-midi.service"],
-            check=False,
-            timeout=15,
-        )
-        status_path = Path("/var/lib/pi-ambient-synth/midi-status.json")
-        for _ in range(40):
-            try:
-                data = json.loads(status_path.read_text(encoding="utf-8"))
-                if data.get("listening") is True:
-                    break
-            except (OSError, json.JSONDecodeError):
-                pass
-            time.sleep(0.25)
+            logger.info("Test note: sent /pi_synth/proof_note (piAmbientVoice, services unchanged)")
+            return
         osc = OscClient(config)
         osc.set_param("master_volume", 1.0)
-        osc._client.send_message("/pi_synth/test_beep", [523.25, 0.98])
-        time.sleep(0.45)
-        osc.note_on(60, 127)
-        time.sleep(1.0)
-        osc.note_off(60)
+        osc._client.send_message("/pi_synth/proof_note", [])
+        time.sleep(2.2)
+        logger.info("Test note: sent /pi_synth/proof_note via OscClient (services unchanged)")
     except Exception:
         logger.exception("test_note background failed")
 
@@ -627,7 +620,17 @@ def _trigger_reseed(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _trigger_test_note(config: dict[str, Any]) -> dict[str, Any]:
-    """Queue loud beep + C4 on Pi headphones; return immediately for the browser."""
+    """Queue /pi_synth/proof_note on Pi — does not stop or restart any synth service."""
+    sc_ok = _service_state("supercollider.service") == "active"
+    midi_ok = _service_state("pi-ambient-synth-midi.service") == "active"
+    if not sc_ok:
+        return {
+            "ok": False,
+            "error": (
+                "Synth engine stopped — KeyStep cannot make sound. "
+                "Run: sudo systemctl restart supercollider pi-ambient-synth-midi"
+            ),
+        }
     threading.Thread(
         target=_run_test_note_audio,
         args=(config,),
@@ -637,13 +640,10 @@ def _trigger_test_note(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": True,
         "queued": True,
-        "note": 60,
-        "velocity": 127,
-        "beep_hz": 523.25,
         "message": (
-            "Direct ALSA blip on Pi jack"
-            if _pi_direct_keys_mode()
-            else "Pi jack: ~6s loud tone (jack released), then synth beep + C4"
+            "Queued /pi_synth/proof_note on Pi (2s ambient chord, same path as KeyStep). "
+            "SuperCollider was left running."
+            + ("" if midi_ok else " Warning: MIDI bridge service is not active.")
         ),
     }
 
@@ -755,6 +755,26 @@ def _html_page(status: dict[str, Any]) -> str:
         detail_rows += row(f"{name} detail", summary, ok=ok)
 
     alerts: list[str] = []
+    sc_active = svc.get("supercollider") == "active"
+    synth_active = svc.get("synth") == "active"
+    midi_active = svc.get("synth_midi") == "active"
+    if not sc_active or not synth_active:
+        stopped = []
+        if not sc_active:
+            stopped.append(f"supercollider={svc.get('supercollider', '?')}")
+        if not synth_active:
+            stopped.append(f"pi-ambient-synth={svc.get('synth', '?')}")
+        alerts.append(
+            "<div class='alert'><strong>Synth engine stopped — KeyStep cannot make sound.</strong> "
+            f"({', '.join(stopped)}). "
+            "Restart: <code>sudo systemctl restart supercollider pi-ambient-synth pi-ambient-synth-midi</code>"
+            "</div>"
+        )
+    elif not midi_active:
+        alerts.append(
+            f"<div class='alert'>MIDI bridge inactive ({_escape(svc.get('synth_midi', '?'))}) — "
+            "KeyStep will not reach SuperCollider.</div>"
+        )
     if midi_ok is False:
         alerts.append(
             f"<div class='alert'>MIDI keyboard: <strong>{_escape(midi_label)}</strong></div>"
@@ -943,7 +963,7 @@ def _html_page(status: dict[str, Any]) -> str:
     The synth runs headless on the Pi — use
     <a href="{_escape(monitor_url)}">{_escape(monitor_url)}</a> from any phone/laptop on the same Wi‑Fi.
   </p>
-  <p class="muted">Sound plays on the <strong>Pi headphone jack</strong> (not this device’s speakers). KeyStep uses <strong>direct ALSA</strong> (SuperCollider/JACK off) for reliable output on Pi 3.</p>
+  <p class="muted" id="sound-hint">Sound plays on the <strong>Pi headphone jack</strong> (not this device’s speakers). {status.get("audio_mode_hint", "")}</p>
 
   <nav class="tabs" role="tablist" aria-label="Monitor sections">
     <button type="button" class="tab-btn active" role="tab" id="tab-btn-sound" aria-selected="true" aria-controls="tab-sound" data-tab="sound">Sound</button>
@@ -966,7 +986,7 @@ def _html_page(status: dict[str, Any]) -> str:
         <div class="vol-actions">
           <button type="button" id="btn-vol-mute" title="Mute synth">Mute</button>
           <button type="button" id="btn-vol-full" title="Full synth volume">100%</button>
-          <button type="button" id="btn-test-note" title="Beep + C4 on Pi headphones (LAN remote OK)">Test note (Pi headphones)</button>
+          <button type="button" id="btn-test-note" title="OSC /pi_synth/proof_note — does not stop SuperCollider">Test note (SC proof chord)</button>
           <button type="button" id="btn-reseed" title="Randomize patch (genre + scope below)">New patch (reseed)</button>
         </div>
       </section>
@@ -1416,7 +1436,7 @@ def _html_page(status: dict[str, Any]) -> str:
         if (!res.ok || !data.ok) {{
           alert('Test note failed: ' + (data.error || res.status));
         }} else {{
-          alert((data.message || 'Queued on Pi') + ' — listen on the Pi headphone jack.');
+          alert((data.message || 'Queued proof_note on Pi') + ' — listen on the Pi headphone jack (SC pad, not speaker-test).');
         }}
       }} catch (e) {{
         alert('Cannot reach Pi monitor. Use ' + piMonitorUrl + ' (same Wi‑Fi), not localhost:8080 on this computer.');

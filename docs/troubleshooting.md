@@ -56,6 +56,62 @@ python3 scripts/list_midi_devices.py
 
 Re-plug the KeyStep USB data cable, then `sudo systemctl restart pi-ambient-synth`.
 
+## V1 FluidSynth (production — no JACK / no SuperCollider)
+
+Stack: **KeyStep → `pi_midi_bridge` → FluidSynth → ALSA `plughw:0,0` → headphone jack.**
+
+```bash
+# 1) Prove FluidSynth audio (user must hear notes)
+INSTALL_DIR=~/pi-ambient-synth ./scripts/fluidsynth_headphone_demo.sh
+
+# 2) Enable V1 on Pi
+INSTALL_DIR=~/pi-ambient-synth ./scripts/pi_enable_fluidsynth_engine.sh
+
+# 3) Play KeyStep; reseed changes GM program; e-ink updates on reseed only
+```
+
+Acceptance: heard demo → heard keys → reseed changes patch/program → e-ink on reseed.
+
+Do not use `pi_enable_ambient_engine.sh` or SuperCollider smoke tests for V1.
+
+## Hardware isolation (ALSA → JACK → SuperCollider) — archived
+
+User heard **silence** on SuperCollider smoke → stop synth/MIDI/OSC work until the jack is proven layer by layer.
+
+| Step | Script | User confirms |
+|------|--------|----------------|
+| 1 ALSA | `scripts/alsa_headphone_smoke_test.sh` | `ALSA_HEADPHONE_TEST_DONE_USER_MUST_CONFIRM` → **heard** / **silence** |
+| 2 Report | `scripts/audio_device_report.sh` | (inventory only) |
+| 3 JACK | `scripts/jack_headphone_smoke_test.sh` | `JACK_HEADPHONE_TEST_DONE_USER_MUST_CONFIRM` → **heard** / **silence** |
+| 4 SC | `scripts/sc_jack_known_good_test.sh` | `SC_JACK_KNOWN_GOOD_TEST_DONE_USER_MUST_CONFIRM` → **heard** / **silence** |
+
+From Mac (`.pi-ssh-credentials`): `./scripts/run_audio_isolation_on_pi.sh alsa` then `report` then `jack` then `sc`.
+
+If Step 1 is **silence**, the fault is Pi output, cable, headphones, or mixer — not the synth app.
+
+## Phased audio rebuild (headphone jack proof first)
+
+Do **not** treat `REAL_SYNTH_PATH_READY` or monitor “Test note” as proof you hear sound. Milestone order:
+
+1. **Direct SuperCollider** — from your Mac (needs `.pi-ssh-credentials` + `sshpass`):
+   ```bash
+   ./scripts/run_sc_direct_smoke_on_pi.sh
+   ```
+   Stops/masks production units, runs `jackd` + `scsynth` + `xvfb-run sclang` (`synth/sc_direct_smoke.scd`), prints `SC_DIRECT_AUDIO_HEARD_QUESTION`. Reply **tone** / **chord** / **silence**. If silence, stop — do not debug MIDI, OSC, or e-ink yet.
+
+2. **Minimal engine** — default `synth/minimal_ambient_engine.scd` (`piWarmPad` → bus 0). After restart:
+   ```bash
+   INSTALL_DIR=~/pi-ambient-synth ./scripts/restart_synth_services.sh
+   INSTALL_DIR=~/pi-ambient-synth ./scripts/minimal_proof_note.sh
+   ```
+   Confirm **pad** audibly on the jack.
+
+3. **KeyStep** — only after step 2; one key, same pad.
+
+4. **E-ink** — `./scripts/disable_eink_for_audio_debug.sh` during audio work; fix display separately later.
+
+Legacy full engine: `PI_LEGACY_ENGINE=1` in `run_sclang_engine.sh` → `synth/ambient_engine.scd`.
+
 ## No sound / headphones silent
 
 1. **OS audio first** — you should hear the test tone on the **3.5 mm jack** (not HDMI):
@@ -85,7 +141,9 @@ sudo systemctl restart supercollider pi-ambient-synth
 sudo journalctl -u supercollider -n 30 --no-pager
 ```
 
-3. **JACK / scsynth crash** — On Pi **SC 3.13**, `scsynth -H hw:0` still embeds **jackdmp**, prints `SuperCollider 3 server ready`, then dies with `JackTemporaryException` / `JackEngine::XRun`. Fix: start **our** `jackd` on ALSA first, then `scsynth` as a JACK client (`scripts/start_scsynth_alsa.sh` does this). Do **not** use systemd `jackd2` (wrong config); do stop PipeWire/Pulse so ALSA is free:
+3. **Stable Pi audio (do not alternate ALSA/JACK modes)** — Production uses **one** stack only: `jackd` on `plughw:0,0` → `scsynth` JACK client → `ensure_jack_playback.sh` links `SuperCollider:out_*` to `system:playback_*`. Do **not** toggle `SC_USE_NATIVE_ALSA`, hybrid `aplay` key blips, or a named JACK server (`jackd -n …`); those caused silent headphones while checks still passed. After deploy: `sudo systemctl restart supercollider pi-ambient-synth-midi` and confirm `jack_lsp -c | grep SuperCollider`.
+
+4. **JACK / scsynth crash** — On Pi **SC 3.13**, `scsynth -H hw:0` still embeds **jackdmp**, prints `SuperCollider 3 server ready`, then dies with `JackTemporaryException` / `JackEngine::XRun`. Fix: start **our** `jackd` on ALSA first, then `scsynth` as a JACK client (`scripts/start_scsynth_alsa.sh` does this). Do **not** use systemd `jackd2` (wrong config); do stop PipeWire/Pulse so ALSA is free:
 
 ```bash
 sudo systemctl stop jackd2 pipewire pipewire-pulse 2>/dev/null || true
@@ -96,7 +154,7 @@ tail -30 /tmp/scsynth-alsa-start.log   # want: jackd ready + scsynth ready (no J
 
 If XRuns persist, try larger buffers: `SC_JACK_PERIOD=4096 SC_JACK_NPERIODS=3 ~/pi-ambient-synth/scripts/start_scsynth_alsa.sh`
 
-4. **Wrong ALSA device** — if HDMI is default, force the jack:
+5. **Wrong ALSA device** — if HDMI is default, force the jack:
 
 ```bash
 # List devices
