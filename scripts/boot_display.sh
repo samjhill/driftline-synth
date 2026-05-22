@@ -168,7 +168,10 @@ display_rc=0
   run_display
 } >>"$EINK_LOG" 2>&1 || display_rc=1
 if [[ "$display_rc" -ne 0 ]]; then
-  echo "$(date -Iseconds) boot_display FAILED phase=$phase" >>"$EINK_LOG"
+  echo "$(date -Iseconds) boot_display FAILED phase=$phase (non-fatal for systemd)" >>"$EINK_LOG"
+  echo "boot_display: e-ink update failed (see $EINK_LOG); synth stack can still start" >&2
+  # Early boot: GPIO busy / panel slow — do not mark systemd unit failed.
+  display_rc=0
 fi
 
 # Boot partition is often read-only after first boot — never fail the display on mirror errors.
