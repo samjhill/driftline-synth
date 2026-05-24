@@ -31,58 +31,23 @@ eink_status() {
   fi
   echo "$key" > "$EINK_STATUS_FILE"
 
-  for boot_disp in \
-    "$INSTALL_DIR/scripts/boot_display.sh" \
-    /boot/firmware/pi-ambient-synth/scripts/boot_display.sh \
-    /boot/pi-ambient-synth/scripts/boot_display.sh; do
-    if [[ -x "$boot_disp" ]]; then
-      if [[ "${INSTALL_FIRST_BOOT:-0}" == "1" || "$MODE" == "bootstrap" ]]; then
-        export FIRST_BOOT_TRACK=1
-        export FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}"
-      fi
-      sudo -u pi env EINK_FORCE=1 EINK_LOG=/var/log/pi-ambient-synth-eink.log \
-        HOME=/home/pi INSTALL_DIR="$INSTALL_DIR" \
-        "$boot_disp" "$phase" "$title" "$subtitle" "$detail" || true
-      return 0
-    fi
-  done
-
-  local script py eink_log=/var/log/pi-ambient-synth-eink.log
-  script="$INSTALL_DIR/scripts/show_status.py"
-  if [[ ! -f "$script" ]]; then
-    local b
-    for b in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
-      if [[ -f "$b/scripts/show_status.py" ]]; then
-        script="$b/scripts/show_status.py"
-        break
-      fi
-    done
-  fi
-  [[ -f "$script" ]] || return 0
-
-  py="$INSTALL_DIR/.venv/bin/python"
-  [[ -x "$py" ]] || py="$(command -v python3 || echo python3)"
-  mkdir -p "$(dirname "$eink_log")" 2>/dev/null || true
-
-  {
-    echo "$(date -Iseconds) eink_status phase=$phase (no boot_display.sh)"
-    sudo -u pi env PYTHONPATH="$INSTALL_DIR/src" HOME=/home/pi EINK_FORCE=1 \
-      "$py" "$script" "$phase" "$title" "$subtitle" "$detail"
-  } >>"$eink_log" 2>&1 || true
+  local py="$INSTALL_DIR/.venv/bin/python"
+  local enq="$INSTALL_DIR/scripts/eink_enqueue.py"
+  [[ -x "$py" && -f "$enq" ]] || return 0
+  sudo -u pi env PYTHONPATH="$INSTALL_DIR/src" HOME=/home/pi \
+    "$py" "$enq" status "$phase" "$title" "$subtitle" "$detail" \
+    >>/var/log/pi-ambient-synth-eink.log 2>&1 || true
 }
 
 eink_restore_patch() {
-  local script py eink_log=/var/log/pi-ambient-synth-eink.log
-  script="$INSTALL_DIR/scripts/show_status.py"
-  [[ -f "$script" ]] || return 0
-  py="$INSTALL_DIR/.venv/bin/python"
-  [[ -x "$py" ]] || py="$(command -v python3)"
-  mkdir -p "$(dirname "$eink_log")" 2>/dev/null || true
+  local py="$INSTALL_DIR/.venv/bin/python"
+  local enq="$INSTALL_DIR/scripts/eink_enqueue.py"
+  [[ -x "$py" && -f "$enq" ]] || return 0
   {
-    echo "$(date -Iseconds) eink_restore_patch"
-    sudo -u pi env HOME=/home/pi PYTHONPATH="$INSTALL_DIR/src" EINK_LOG="$eink_log" \
-      GPIOZERO_PIN_FACTORY=lgpio "$py" "$script" --restore-patch
-  } >>"$eink_log" 2>&1 || true
+    echo "$(date -Iseconds) eink_restore_patch (queue)"
+    sudo -u pi env PYTHONPATH="$INSTALL_DIR/src" HOME=/home/pi \
+      "$py" "$enq" patch --from-state
+  } >>/var/log/pi-ambient-synth-eink.log 2>&1 || true
   rm -f "$EINK_STATUS_FILE"
 }
 
@@ -229,6 +194,10 @@ fetch_github() {
 }
 
 run_install() {
+  if [[ -f /run/pi-ambient-synth/firstboot-heavy-done ]] || [[ -f /var/lib/pi-ambient-synth/firstboot-heavy-done ]]; then
+    log "Skipping install.sh — factory firstboot-heavy already completed"
+    return 0
+  fi
   local enable_flag=() quick_flag=()
   if [[ "${ENABLE_SERVICES:-0}" == "1" ]]; then
     enable_flag=(--enable-services)

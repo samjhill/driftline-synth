@@ -1,0 +1,20 @@
+[Unit]
+Description=Pi Ambient Synth — show patch on e-ink after boot
+After=network-online.target pi-ambient-synth-boot-display.service pi-ambient-synth-midi.service
+Wants=network-online.target
+# Allow patch refresh even if MIDI is still starting
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+Environment=HOME=/home/pi
+Environment=GPIOZERO_PIN_FACTORY=lgpio
+Environment=EINK_LOG=/var/log/pi-ambient-synth-eink.log
+ExecStart=/bin/bash -c 'S=/home/pi/pi-ambient-synth/scripts/eink_show_patch_status.sh; test -x "$S" || exit 0; exec "$S"'
+SuccessExitStatus=0 1 2 3
+
+[Install]
+WantedBy=multi-user.target

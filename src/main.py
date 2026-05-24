@@ -149,7 +149,11 @@ class PiAmbientSynth:
 
     def startup(self) -> None:
         self.osc.set_volume(self._master_volume_level())
-        if self.config.get("eink", {}).get("enabled", True):
+        if (
+            self.config.get("eink", {}).get("enabled", True)
+            and not self._no_eink
+            and not self._eink_service_mode()
+        ):
             self.eink.init()
             self.eink.show_status(
                 "synth",
@@ -303,14 +307,33 @@ class PiAmbientSynth:
         self.osc.note_off(note, velocity)
         self._refresh_playing_note_display(force=not self.play.active_notes)
 
+    def _eink_service_mode(self) -> bool:
+        return bool(self.config.get("eink", {}).get("service_mode", False))
+
     def _ensure_eink(self) -> bool:
         if not self.config.get("eink", {}).get("enabled", True):
+            return False
+        if self._eink_service_mode() or self._no_eink:
             return False
         if self.eink.available:
             return True
         return self.eink.init()
 
+    def _queue_eink_patch(self) -> None:
+        try:
+            from eink_queue import enqueue_patch
+
+            enqueue_patch(from_state=True)
+        except Exception as e:
+            logger.debug("e-ink queue: %s", e)
+
     def _update_display(self, patch: Patch, favorite: bool = False) -> None:
+        if not self.config.get("eink", {}).get("enabled", True):
+            return
+        if self._eink_service_mode() or self._no_eink:
+            if self.config.get("eink", {}).get("update_on_reseed", True):
+                self._queue_eink_patch()
+            return
         if not self._ensure_eink():
             return
         img = self.visual.render_patch(patch, battery=self._battery_for_display())
@@ -343,7 +366,12 @@ class PiAmbientSynth:
                 reseed_scope=prefs.reseed_scope,
             )
 
-        if self.config.get("eink", {}).get("enabled", True) and old:
+        if (
+            self.config.get("eink", {}).get("enabled", True)
+            and old
+            and not self._eink_service_mode()
+            and not self._no_eink
+        ):
             wipe = self.visual.render_reseed_wipe(old, self._patch)
             self.eink.show_image(wipe)
             time.sleep(0.35)

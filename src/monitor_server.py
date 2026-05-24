@@ -30,6 +30,9 @@ from patch_prefs import PatchPrefs, load_patch_prefs, save_patch_prefs
 from patch_resolve import resolve_current_patch
 from reseed_trigger import reseed_request_path, touch_reseed_request
 from pisugar_battery import read_battery_snapshot
+from eink_queue import queue_depth
+from eink_service_state import read_service_state
+from eink_status import read_eink_status
 from state_store import StateStore
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,7 @@ SERVICE_UNITS = {
     "supercollider": "supercollider.service",
     "synth": "pi-ambient-synth.service",
     "synth_midi": "pi-ambient-synth-midi.service",
+    "eink": "pi-ambient-synth-eink.service",
     "monitor": "pi-ambient-synth-monitor.service",
     "deploy_timer": "pi-ambient-synth-deploy.timer",
 }
@@ -314,6 +318,10 @@ def collect_status(config: dict[str, Any]) -> dict[str, Any]:
         "eink_log_path": str(_resolve_eink_log()),
         "eink_log_tail": _tail_file(_resolve_eink_log(), log_tail_lines),
         "last_eink_status": _read_marker_file("last_eink_status"),
+        "eink_status": read_eink_status(),
+        "eink_service": read_service_state(),
+        "eink_queue_depth": queue_depth(),
+        "eink_unit_active": _service_state("pi-ambient-synth-eink.service") == "active",
         "battery": _battery_status(config),
         "network_address": _read_marker_file("network-address.txt"),
         "volume": {
@@ -566,6 +574,11 @@ def _pi_audio_mode_hint() -> str:
         )
     if "flues" in mode:
         return "KeyStep → <strong>Flues-Synth</strong>."
+    if "fluidsynth" in mode:
+        return (
+            "KeyStep → <strong>FluidSynth</strong> → ALSA headphones "
+            "(SuperCollider/JACK off)."
+        )
     if hybrid or "ambient" in mode:
         return (
             "KeyStep → <strong>hybrid</strong>: ALSA blip per key + "
@@ -758,7 +771,25 @@ def _html_page(status: dict[str, Any]) -> str:
     sc_active = svc.get("supercollider") == "active"
     synth_active = svc.get("synth") == "active"
     midi_active = svc.get("synth_midi") == "active"
-    if not sc_active or not synth_active:
+    fluidsynth_mode = "fluidsynth" in (status.get("audio_mode_hint") or "").lower() or (
+        Path("/etc/pi-ambient-synth/audio-mode.conf").is_file()
+        and "fluidsynth"
+        in Path("/etc/pi-ambient-synth/audio-mode.conf")
+        .read_text(encoding="utf-8", errors="replace")
+    )
+    if fluidsynth_mode:
+        if not midi_active:
+            alerts.append(
+                f"<div class='alert'><strong>No sound:</strong> MIDI bridge inactive "
+                f"({_escape(svc.get('synth_midi', '?'))}). "
+                "Restart: <code>sudo systemctl restart pi-ambient-synth-midi</code></div>"
+            )
+        elif not synth_active:
+            alerts.append(
+                f"<div class='alert'>Controller inactive ({_escape(svc.get('synth', '?'))}) "
+                "— reseed/PiSugar may not work; MIDI can still play.</div>"
+            )
+    elif not sc_active or not synth_active:
         stopped = []
         if not sc_active:
             stopped.append(f"supercollider={svc.get('supercollider', '?')}")
@@ -775,6 +806,23 @@ def _html_page(status: dict[str, Any]) -> str:
             f"<div class='alert'>MIDI bridge inactive ({_escape(svc.get('synth_midi', '?'))}) — "
             "KeyStep will not reach SuperCollider.</div>"
         )
+    eink_st = status.get("eink_status") or {}
+    eink_code = (eink_st.get("status") or "").strip()
+    if eink_code and eink_code != "OK":
+        detail = eink_st.get("detail") or ""
+        at = eink_st.get("updated_at") or "—"
+        audio_ok = midi_active and (fluidsynth_mode or sc_active)
+        if audio_ok:
+            alerts.append(
+                f"<div class='alert muted'><strong>E-ink:</strong> {_escape(eink_code)} "
+                f"at {_escape(at)} — {_escape(detail)}. "
+                "<strong>Audio path is still active.</strong></div>"
+            )
+        else:
+            alerts.append(
+                f"<div class='alert'><strong>E-ink:</strong> {_escape(eink_code)} "
+                f"at {_escape(at)} — {_escape(detail)}</div>"
+            )
     if midi_ok is False:
         alerts.append(
             f"<div class='alert'>MIDI keyboard: <strong>{_escape(midi_label)}</strong></div>"
@@ -851,6 +899,39 @@ def _html_page(status: dict[str, Any]) -> str:
     else:
         alsa_label = "—"
     volume_row = row("Volume", f"Synth {master_pct}% · Headphone {alsa_label}", ok=None)
+    eink_st = status.get("eink_status") or {}
+    eink_svc = status.get("eink_service") or {}
+    eink_label = "—"
+    eink_ok: bool | None = None
+    if eink_st:
+        eink_label = (
+            f"{eink_st.get('status', '?')} @ {eink_st.get('updated_at', '?')}"
+        )
+        if eink_st.get("detail"):
+            eink_label += f" — {eink_st['detail']}"
+        if eink_st.get("patch_summary"):
+            eink_label += f" ({eink_st['patch_summary']})"
+        eink_ok = eink_st.get("status") == "OK"
+    elif status.get("last_eink_status"):
+        eink_label = status.get("last_eink_status") or "—"
+    eink_row = row("E-ink last update", eink_label, ok=eink_ok)
+    svc_active = status.get("eink_unit_active")
+    svc_label = "active" if svc_active else "inactive"
+    if eink_svc:
+        svc_label += f" · last OK {eink_svc.get('last_ok_at', '—')}"
+        if eink_svc.get("last_error"):
+            svc_label += f" · err: {eink_svc['last_error']}"
+    qd = status.get("eink_queue_depth")
+    if qd is not None:
+        svc_label += f" · queue {qd}"
+    eink_svc_row = row("E-ink service", svc_label, ok=svc_active)
+    svc_map = status.get("services") or {}
+    midi_active = svc_map.get("synth_midi") == "active"
+    audio_row = row(
+        "Audio (MIDI bridge)",
+        "active" if midi_active else "inactive",
+        ok=midi_active if midi_active is not None else None,
+    )
     monitor_url_js = json.dumps(monitor_url)
 
     return f"""<!DOCTYPE html>
@@ -1031,6 +1112,9 @@ def _html_page(status: dict[str, Any]) -> str:
       {row("MIDI inputs", midi_inputs)}
       {row("Current patch", patch_sum, ok=None)}
       {volume_row}
+      {eink_row}
+      {eink_svc_row}
+      {audio_row}
       {row("Deploy SHA", sha)}
       {row("SC engine", status.get("sc_engine_ready") or "not ready (no /var/lib/pi-ambient-synth/sc-engine-ready)")}
       {bat_row}

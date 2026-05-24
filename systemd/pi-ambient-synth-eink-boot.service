@@ -1,0 +1,21 @@
+[Unit]
+Description=Pi Ambient Synth — e-ink boot sequence (splash, network, patch)
+After=pi-ambient-synth-eink-prepare.service
+Requires=pi-ambient-synth-eink-prepare.service
+# Legacy units race on GPIO — keep them off when this unit is installed.
+Conflicts=pi-ambient-synth-boot-display.service pi-ambient-synth-network-announce.service pi-ambient-synth-eink-patch.service
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+Environment=HOME=/home/pi
+Environment=GPIOZERO_PIN_FACTORY=lgpio
+Environment=EINK_LOG=/var/log/pi-ambient-synth-eink.log
+Environment=EINK_SKIP_PURGE=1
+Environment=EINK_LOCK_WAIT_SECONDS=120
+ExecStart=/bin/bash -c 'S=/home/pi/pi-ambient-synth/scripts/eink_boot_sequence.sh; test -x "$S" || exit 0; exec "$S"'
+SuccessExitStatus=0 1 2 3
+
+[Install]
+WantedBy=multi-user.target

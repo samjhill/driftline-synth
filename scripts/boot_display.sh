@@ -16,7 +16,7 @@ if [[ "$(id -un)" != "pi" ]] && [[ "${EINK_AS_USER:-0}" != "1" ]] && [[ "${EINK_
       MARKER_DIR="${MARKER_DIR:-/var/lib/pi-ambient-synth}" \
       FIRST_BOOT_TRACK="${FIRST_BOOT_TRACK:-0}" \
       FIRST_BOOT_TOTAL="${FIRST_BOOT_TOTAL:-12}" \
-      EINK_DISPLAY_TIMEOUT="${EINK_DISPLAY_TIMEOUT:-50}" \
+      EINK_DISPLAY_TIMEOUT="${EINK_DISPLAY_TIMEOUT:-180}" \
       HOME=/home/pi \
       "$0" "$@"
   fi
@@ -145,7 +145,7 @@ if bl="$(boot_log_dir)"; then
 fi
 
 run_display() {
-  local display_timeout="${EINK_DISPLAY_TIMEOUT:-50}"
+  local display_timeout="${EINK_DISPLAY_TIMEOUT:-180}"
   export PYTHONPATH="$src" HOME=/home/pi GPIOZERO_PIN_FACTORY=lgpio
   case "$phase" in
     boot|wifi|network|install|ready|failed) export EINK_FORCE=1 ;;

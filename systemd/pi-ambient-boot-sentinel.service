@@ -1,0 +1,20 @@
+[Unit]
+Description=Pi Ambient boot sentinel (write pi-boot-sentinel.txt before cloud-init)
+DefaultDependencies=no
+After=local-fs.target
+Before=cloud-init.service
+ConditionPathExists=!/var/lib/pi-ambient-synth/boot-sentinel-done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=60
+ExecStart=/bin/bash -c '\
+  for s in /boot/firmware/pi-ambient-synth/scripts/pi_boot_sentinel.sh \
+           /boot/pi-ambient-synth/scripts/pi_boot_sentinel.sh; do \
+    if test -x "$s"; then exec bash "$s"; fi; \
+  done; \
+  echo "pi_boot_sentinel.sh missing on boot partition" >&2; exit 1'
+
+[Install]
+WantedBy=basic.target

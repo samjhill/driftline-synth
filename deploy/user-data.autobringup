@@ -1,0 +1,12 @@
+#cloud-config
+# Autobringup SD — SSH only. Install bring-up on Pi after boot:
+#   sudo /boot/firmware/pi-ambient-synth/scripts/install_autobringup_on_pi.sh
+
+package_update: false
+package_upgrade: false
+timezone: America/New_York
+
+runcmd:
+  - touch /boot/firmware/ssh /boot/ssh 2>/dev/null || true
+  - systemctl enable ssh 2>/dev/null || systemctl enable sshd 2>/dev/null || true
+  - systemctl start ssh 2>/dev/null || systemctl start sshd 2>/dev/null || true

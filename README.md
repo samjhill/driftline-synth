@@ -55,7 +55,7 @@ chmod +x scripts/sync_to_sd_mac.sh
 That copies the synth, Wi‑Fi settings (from a local file you create — see below), and auto-install instructions. **Wi‑Fi passwords are not stored in GitHub** — they live only in `deploy/secrets/` on your Mac.
 
 1. Eject the card, put it in the Pi, power on, connect speakers and the KeyStep.
-2. **First boot** — `sync_to_sd_mac.sh` pre-bundles the e-ink driver, Python wheels, and (if Docker is available) a full `.venv`, so install is mostly offline. Expect **~10–20 minutes** (mostly SuperCollider/apt). The green LED blinking is normal. The e-ink may show boot steps (`BOOT`, `WIFI`, `INSTALL`, etc.).
+2. **First boot** — use `./scripts/build_factory_sd_mac.sh` (FluidSynth V1). Expect **SSH in ~2–4 minutes**; apt/venv run in the background (`firstboot-heavy`). E-ink shows `BOOT`, `SSH OK`, `APT`, `AUDIO OK`. See [docs/fast-first-boot.md](docs/fast-first-boot.md).
 3. When it’s ready, play the keyboard. If you need SSH: try `ssh pi@raspberrypi.local` (default password `raspberry` — change it).
 
 After setup, code updates can arrive from GitHub automatically about once a minute when you push changes. Details: [docs/deploy.md](docs/deploy.md).

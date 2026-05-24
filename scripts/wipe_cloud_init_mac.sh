@@ -22,4 +22,12 @@ for p in \
   /var/lib/cloud/seed; do
   e2rm -r "$DEV:$p" 2>/dev/null && echo "  removed $p" || true
 done
+for p in \
+  /var/lib/pi-ambient-synth/boot-sentinel-done \
+  /var/lib/pi-ambient-synth/autobringup-done \
+  /var/lib/pi-ambient-synth/eink-boot-shown \
+  /var/lib/pi-ambient-synth/firstboot-light-done \
+  /var/lib/pi-ambient-synth/firstboot-heavy-done; do
+  e2rm "$DEV:$p" 2>/dev/null && echo "  removed $p" || true
+done
 echo "Done. Re-sync boot partition if needed, then boot Pi."

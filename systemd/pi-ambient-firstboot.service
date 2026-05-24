@@ -1,0 +1,25 @@
+[Unit]
+Description=Pi Ambient Synth canonical first boot (e-ink, rsync, WiFi, heavy)
+After=local-fs.target network.target
+Wants=network.target
+ConditionPathExists=!/var/lib/pi-ambient-synth/firstboot-done
+ConditionPathExists=!/etc/pi-ambient-synth/firstboot-disabled
+
+[Service]
+Type=simple
+TimeoutStartSec=900
+ExecStart=/bin/bash -c '\
+  for d in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do \
+    if test -x "$d/scripts/pi_ambient_firstboot.sh"; then \
+      exec bash "$d/scripts/pi_ambient_firstboot.sh"; \
+    fi; \
+  done; \
+  if test -x /home/pi/pi-ambient-synth/scripts/pi_ambient_firstboot.sh; then \
+    exec /home/pi/pi-ambient-synth/scripts/pi_ambient_firstboot.sh; \
+  fi; \
+  echo "pi_ambient_firstboot.sh not found" >&2; exit 127'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

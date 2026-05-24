@@ -62,12 +62,20 @@ class RaspberryPi:
         self.GPIO_PWR_PIN = None
         self.GPIO_BUSY_PIN = None
 
+        force_gpiozero = os.environ.get("EINK_FORCE_GPIOZERO", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         try:
+            if force_gpiozero:
+                raise RuntimeError("EINK_FORCE_GPIOZERO set")
             import lgpio
 
             self._lgpio = lgpio
             chip = lgpio.gpiochip_open(0)
             self._lgpio_chip = chip
+            # CS (GPIO8) is driven by spidev CE0 — do not claim with lgpio.
             self._lgpio_out[self.RST_PIN] = lgpio.gpio_claim_output(
                 chip, self.RST_PIN, lgpio.SET_PULL_NONE, 0
             )
@@ -178,7 +186,7 @@ class RaspberryPi:
             self.DEV_SPI.DEV_Module_Init()
 
         else:
-            # SPI device, bus = 0, device = 0
+            # SPI device, bus = 0, device = 0 (CE0 = GPIO8)
             self.SPI.open(0, 0)
             self.SPI.max_speed_hz = 4000000
             self.SPI.mode = 0b00

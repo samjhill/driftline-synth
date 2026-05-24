@@ -1,0 +1,5 @@
+# Recovery mode pip (no Pillow/gpiozero/numpy/spidev).
+mido
+python-rtmidi
+python-osc
+PyYAML

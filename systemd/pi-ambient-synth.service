@@ -1,6 +1,6 @@
 [Unit]
 Description=Pi Ambient Synth Controller
-After=pi-ambient-synth-network-announce.service
+After=pi-ambient-synth-eink-boot.service
 # Audio engine is mode-specific (flues-synth or supercollider via drop-ins).
 Wants=pi-flues-synth.service
 StartLimitIntervalSec=120

@@ -115,27 +115,22 @@ def _spawn_alsa_key_tone(
     )
 
 
-def _spawn_eink_restore(config: dict, root: Path) -> None:
-    """Refresh patch art on e-ink (main.py runs with --no-eink in production)."""
+def _enqueue_eink_patch(config: dict, root: Path) -> None:
+    """Request patch screen via e-ink service queue (never touches GPIO)."""
     if not config.get("eink", {}).get("enabled", True):
         return
-    script = root / "scripts" / "show_status.py"
-    vpy = root / ".venv/bin/python"
-    if not script.is_file() or not vpy.is_file():
+    if not config.get("eink", {}).get("update_on_reseed", True):
         return
-    env = os.environ.copy()
-    env.setdefault("HOME", "/home/pi")
-    env.setdefault("GPIOZERO_PIN_FACTORY", "lgpio")
-    env["PYTHONPATH"] = str(root / "src")
-    env.setdefault("EINK_LOG", "/var/log/pi-ambient-synth-eink.log")
-    subprocess.Popen(
-        [str(vpy), str(script), "--restore-patch"],
-        cwd=str(root),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    try:
+        sys.path.insert(0, str(root / "src"))
+        from eink_queue import enqueue_patch
+
+        if enqueue_patch(from_state=True) is None:
+            logger.debug("e-ink queue enqueue failed")
+        else:
+            logger.debug("e-ink patch queued")
+    except Exception as e:
+        logger.debug("e-ink queue unavailable: %s", e)
 
 
 def main() -> int:
@@ -383,7 +378,7 @@ def main() -> int:
             osc.reseed(new.seed)
             osc.send_patch(new, morph_seconds=morph)
         logger.info("Reseed → %s", new.summary())
-        _spawn_eink_restore(config, root)
+        _enqueue_eink_patch(config, root)
 
     def on_clock() -> None:
         if fs_engine is not None:
@@ -459,7 +454,11 @@ def main() -> int:
         else:
             logger.info("MIDI bridge running on %s → OSC", midi.port_name)
 
-    # Patch screen once at startup (async restore races with note updates).
+    # E-ink: startup + reseed only (detached; never blocks note handling).
+    if fluidsynth_backend and config.get("eink", {}).get("enabled", True):
+        _enqueue_eink_patch(config, root)
+
+    # JACK watchdog (ambient SC path only).
     if not (direct_keys or hybrid_keys or fluidsynth_backend):
         if jack_script.is_file():
             subprocess.run(

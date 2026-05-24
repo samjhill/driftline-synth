@@ -1,0 +1,27 @@
+[Unit]
+Description=Pi Ambient Synth autonomous bring-up (rootfs systemd lifecycle)
+Documentation=file:/boot/firmware/pi-ambient-synth/docs/autobringup.md
+# Install on Pi: sudo .../scripts/install_autobringup_on_pi.sh
+After=local-fs.target
+Wants=local-fs.target
+ConditionPathExists=!/var/lib/pi-ambient-synth/autobringup-done
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=1200
+Environment=GPIOZERO_PIN_FACTORY=lgpio
+ExecStart=/bin/bash -c '\
+  for d in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do \
+    if test -x "$d/scripts/pi_ambient_autobringup.sh"; then \
+      exec bash "$d/scripts/pi_ambient_autobringup.sh"; \
+    fi; \
+  done; \
+  echo "pi_ambient_autobringup.sh missing on boot partition" >&2; exit 127'
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pi-ambient-autobringup
+
+[Install]
+WantedBy=multi-user.target

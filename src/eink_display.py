@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,14 @@ from PIL import Image
 from patch_model import Patch
 
 logger = logging.getLogger(__name__)
+
+_BUSY_CACHE_ENV = "EINK_BUSY_CACHE_FILE"
+_BUSY_CACHE_DEFAULT = "/var/lib/pi-ambient-synth/eink-busy-active-high"
+
+
+class EinkBusyTimeoutError(RuntimeError):
+    """Panel busy pin did not clear within the configured timeout."""
+
 
 _WAVESHARE_AVAILABLE = False
 _epd_module = None
@@ -92,23 +101,101 @@ class EInkDisplay:
         self._available = False
         self._driver_name = ""
         self._frame_count = 0
+        self._busy_bypass = False
 
-    def _bind_read_busy(self, epd: Any, *, active_high: bool) -> None:
-        """Patch vendor ReadBusy: timeout instead of hard fail (stuck busy pin)."""
+    def _refresh_wait_ms(self) -> int:
+        # Waveshare V4 full refresh can take up to ~15s on some panels.
+        return int(self._eink_cfg.get("refresh_wait_ms", 8000))
+
+    def _wait_panel_refresh(self) -> None:
+        """Fixed delay when BUSY pin is unusable (stuck HIGH)."""
+        ms = self._refresh_wait_ms()
+        if self._busy_bypass and ms > 0:
+            logger.info("E-ink refresh wait %dms (busy pin bypass)", ms)
+            time.sleep(ms / 1000.0)
+
+    @staticmethod
+    def _busy_cache_path() -> Path:
+        return Path(os.environ.get(_BUSY_CACHE_ENV, _BUSY_CACHE_DEFAULT))
+
+    @classmethod
+    def _load_busy_polarity_cache(cls) -> bool | None:
+        path = cls._busy_cache_path()
+        try:
+            if not path.is_file():
+                return None
+            raw = path.read_text(encoding="utf-8").strip()
+            if raw in ("1", "true", "yes", "high"):
+                return True
+            if raw in ("0", "false", "no", "low"):
+                return False
+        except OSError:
+            pass
+        return None
+
+    @classmethod
+    def _save_busy_polarity_cache(cls, active_high: bool) -> None:
+        path = cls._busy_cache_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("1\n" if active_high else "0\n", encoding="utf-8")
+            logger.info("E-ink busy polarity cached: active_high=%s", active_high)
+        except OSError as e:
+            logger.debug("Could not write busy cache %s: %s", path, e)
+
+    def _bind_read_busy(
+        self,
+        epd: Any,
+        *,
+        active_high: bool,
+        bypass_busy: bool = False,
+    ) -> None:
+        """Patch vendor ReadBusy: fail on timeout (caller tries inverse polarity)."""
+        import os
+
         from waveshare_epd import epdconfig
+
+        if bypass_busy:
+            # BUSY stuck HIGH: match official minimal test (poll while busy==1, then fixed wait).
+            wait_ms = self._refresh_wait_ms()
+
+            def read_busy_stuck_high(timeout_sec: float = 20.0) -> None:
+                deadline = time.time() + min(float(timeout_sec or 20), 20.0)
+                pin = epd.busy_pin
+                while epdconfig.digital_read(pin) == 1:
+                    if time.time() >= deadline:
+                        logger.warning(
+                            "BUSY BCM%s stuck HIGH; fixed wait %dms",
+                            pin,
+                            wait_ms,
+                        )
+                        time.sleep(wait_ms / 1000.0)
+                        return
+                    epdconfig.delay_ms(20)
+
+            epd.ReadBusy = read_busy_stuck_high
+            return
 
         busy_pin = epd.busy_pin
         busy_level = 1 if active_high else 0
         timeout = float(self._eink_cfg.get("busy_timeout_seconds", 25))
+        strict = os.environ.get("EINK_STRICT_BUSY", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
 
         def read_busy(timeout_sec: float = timeout) -> None:
             deadline = time.time() + timeout_sec
             while epdconfig.digital_read(busy_pin) == busy_level:
                 if time.time() >= deadline:
-                    logger.warning(
-                        "e-Paper busy pin did not clear within %.0fs; proceeding",
-                        timeout_sec,
+                    msg = (
+                        f"e-Paper busy pin did not clear within {timeout_sec:.0f}s "
+                        f"(active_high={active_high})"
                     )
+                    if strict:
+                        raise EinkBusyTimeoutError(msg)
+                    logger.warning("%s; proceeding", msg)
                     return
                 epdconfig.delay_ms(10)
 
@@ -136,6 +223,26 @@ class EInkDisplay:
             except OSError:
                 pass
 
+    def _probe_busy_polarity(self) -> bool | None:
+        """Guess idle polarity when BUSY is stuck (common on 2.13\" V4 Pi stacks)."""
+        try:
+            from waveshare_epd import epdconfig
+
+            epdconfig.module_init()
+            pin = epdconfig.BUSY_PIN
+            samples = [epdconfig.digital_read(pin) for _ in range(12)]
+            epdconfig.module_exit()
+        except Exception as e:
+            logger.debug("Busy probe skipped: %s", e)
+            return None
+        if all(s == 1 for s in samples):
+            logger.info("Busy pin stuck HIGH — prefer active_high=False (idle when high)")
+            return False
+        if all(s == 0 for s in samples):
+            logger.info("Busy pin stuck LOW — prefer active_high=True (idle when low)")
+            return True
+        return None
+
     def init(self) -> bool:
         if not self.enabled:
             logger.info("E-ink disabled in config")
@@ -150,28 +257,51 @@ class EInkDisplay:
             )
             self._available = False
             return False
-        polarities = (True, False)
+        probed = self._probe_busy_polarity()
+        cached = self._load_busy_polarity_cache()
         cfg_high = self._eink_cfg.get("busy_active_high")
-        if cfg_high is True:
-            polarities = (True,)
+        if probed is not None:
+            polarities = [probed, not probed]
+        elif cached is not None:
+            polarities = [cached, not cached]
+        elif cfg_high is True:
+            polarities = [True, False]
         elif cfg_high is False:
-            polarities = (False,)
+            polarities = [False, True]
+        else:
+            polarities = [True, False]
 
+        stuck_high = probed is False
         last_error: BaseException | None = None
         for attempt, active_high in enumerate(polarities, start=1):
             try:
                 self._release_gpio_only()
                 self._epd = _epd_module.EPD()
-                self._bind_read_busy(self._epd, active_high=active_high)
+                bypass = stuck_high and not active_high
+                self._busy_bypass = bypass
+                self._bind_read_busy(
+                    self._epd,
+                    active_high=active_high,
+                    bypass_busy=bypass,
+                )
                 self._epd.init()
                 self._available = True
                 self._driver_name = getattr(_epd_module, "__name__", "waveshare")
+                self._save_busy_polarity_cache(active_high)
                 logger.info(
                     "E-ink display initialized (%s, busy_active_high=%s)",
                     self._driver_name,
                     active_high,
                 )
                 return True
+            except EinkBusyTimeoutError as e:
+                last_error = e
+                logger.warning(
+                    "E-ink init attempt %s busy timeout (active_high=%s)",
+                    attempt,
+                    active_high,
+                )
+                self._force_release()
             except Exception as e:
                 last_error = e
                 logger.warning(
@@ -219,16 +349,29 @@ class EInkDisplay:
             logger.warning("E-ink stub: display not initialized — image not shown")
             return
 
-        use_full = full_refresh or (
-            self.full_refresh_boot and self._frame_count == 0
+        # Avoid repeated full-flash loops; only purge when explicitly requested.
+        use_full = bool(full_refresh)
+        skip_purge = os.environ.get("EINK_SKIP_PURGE", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
         )
-        if use_full:
+        if use_full and not skip_purge:
             self._purge_panel()
+        elif use_full:
+            try:
+                self._epd.init()
+                self._epd.Clear(0xFF)
+                time.sleep(0.3)
+            except Exception as e:
+                logger.warning("E-ink pre-clear failed: %s", e)
         buf = self._epd.getbuffer(image)
         if self.partial_refresh and hasattr(self._epd, "displayPartial"):
             self._epd.displayPartial(buf)
         else:
             self._epd.display(buf)
+        if not self._busy_bypass:
+            self._wait_panel_refresh()
         self._frame_count += 1
 
     def show_patch(self, patch: Patch, image: Image.Image) -> None:
@@ -279,14 +422,22 @@ class EInkDisplay:
 
     def _force_release(self) -> None:
         """Release panel and GPIO after a failed init (EPD() may have claimed pins)."""
+        no_sleep = os.environ.get("EINK_NO_DEEP_SLEEP", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         if self._epd:
             try:
-                self._epd.sleep()
+                self._wait_panel_refresh()
+                if not no_sleep:
+                    self._epd.sleep()
             except Exception as e:
                 logger.debug("E-ink sleep after failed init: %s", e)
         self._release_gpio_only()
         self._epd = None
         self._available = False
+        self._busy_bypass = False
 
     def release(self) -> None:
         """Deep-sleep panel and free GPIO/SPI for other tools."""

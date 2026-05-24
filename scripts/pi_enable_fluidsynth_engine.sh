@@ -26,6 +26,8 @@ echo "==> stop SuperCollider / JACK / Flues"
 sudo systemctl stop supercollider.service pi-ambient-synth.service pi-flues-synth.service \
   pi-ambient-alsa-drone.service pi-ambient-synth-midi.service 2>/dev/null || true
 sudo systemctl disable supercollider.service pi-flues-synth.service pi-ambient-alsa-drone.service 2>/dev/null || true
+sudo systemctl disable pi-ambient-synth-audio-display.service 2>/dev/null || true
+sudo systemctl stop pi-ambient-synth-audio-display.service 2>/dev/null || true
 sudo systemctl mask supercollider.service 2>/dev/null || true
 sudo systemctl disable --now pi-ambient-jack-playback.timer pi-ambient-jack-playback.service 2>/dev/null || true
 sudo systemctl disable pi-ambient-boot-validate.service 2>/dev/null || true
@@ -52,6 +54,9 @@ fi
 
 sudo systemctl daemon-reload
 sudo systemctl enable pi-ambient-synth-midi.service pi-ambient-synth-monitor.service pi-ambient-synth.service
+if [[ -x "$INSTALL_DIR/scripts/eink_install_systemd.sh" ]]; then
+  bash "$INSTALL_DIR/scripts/eink_install_systemd.sh"
+fi
 sudo systemctl restart pi-ambient-synth.service pi-ambient-synth-midi.service pi-ambient-synth-monitor.service
 
 sleep 2

@@ -1,6 +1,6 @@
-#cloud-config
 # Copy to deploy/secrets/network-config.local (gitignored) and customize.
 # sync_to_sd_mac.sh copies the .local file to the SD boot partition.
+# Do NOT put #cloud-config here — that header is only for user-data (breaks WiFi on Pi).
 
 country: US
 
@@ -13,4 +13,5 @@ network:
       optional: true
       access-points:
         "YOUR_SSID":
+          # Quote passwords that contain spaces or special characters.
           password: "YOUR_PASSWORD"

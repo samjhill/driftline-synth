@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi Ambient Synth — free e-ink from legacy projects (GhostRoll)
+DefaultDependencies=no
+After=local-fs.target
+Before=pi-ambient-synth-boot-display.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=EINK_LOG=/var/log/pi-ambient-synth-eink.log
+ExecStart=/bin/bash -c 'P=/home/pi/pi-ambient-synth/scripts/eink_prepare_boot.sh; test -x "$P" || P=/boot/firmware/pi-ambient-synth/scripts/eink_prepare_boot.sh; test -x "$P" || P=/boot/pi-ambient-synth/scripts/eink_prepare_boot.sh; exec "$P"'
+
+[Install]
+WantedBy=multi-user.target

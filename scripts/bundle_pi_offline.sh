@@ -27,12 +27,26 @@ echo "==> Downloading linux/arm64 wheels with $PIP (Python ${PYVER})..."
 rm -rf "$WHEELS"
 mkdir -p "$WHEELS"
 
+V1_BUNDLE=0
+if [[ "${BUNDLE_V1:-0}" == "1" ]] || [[ "${FACTORY_SD:-0}" == "1" ]] || [[ "${DEFAULT_AUDIO_MODE:-}" == "fluidsynth" ]]; then
+  V1_BUNDLE=1
+fi
+
 # Pure-python (architecture-independent).
-"$PIP" download mido python-osc PyYAML gpiozero colorzero packaging setuptools \
-  -d "$WHEELS" --extra-index-url "$PIWHEELS"
+if [[ "$V1_BUNDLE" == "1" ]]; then
+  "$PIP" download mido python-osc PyYAML gpiozero packaging setuptools \
+    -d "$WHEELS" --extra-index-url "$PIWHEELS"
+else
+  "$PIP" download mido python-osc PyYAML gpiozero colorzero packaging setuptools \
+    -d "$WHEELS" --extra-index-url "$PIWHEELS"
+fi
 
 # Binary packages for Raspberry Pi OS 64-bit (Bookworm / Python 3.11).
-aarch64_pkgs=(numpy Pillow PyYAML python-rtmidi spidev RPi.GPIO)
+if [[ "$V1_BUNDLE" == "1" ]]; then
+  aarch64_pkgs=(Pillow python-rtmidi spidev RPi.GPIO)
+else
+  aarch64_pkgs=(numpy Pillow PyYAML python-rtmidi spidev RPi.GPIO)
+fi
 for pkg in "${aarch64_pkgs[@]}"; do
   echo "    $pkg ..."
   "$PIP" download "$pkg" -d "$WHEELS" \

@@ -1,0 +1,20 @@
+[Unit]
+Description=Pi Ambient Synth first boot (heavy — apt, venv, FluidSynth)
+After=network.target
+ConditionPathExists=!/run/pi-ambient-synth/firstboot-heavy-done
+ConditionPathExists=!/var/lib/pi-ambient-synth/firstboot-heavy-done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=3600
+ExecStart=/bin/bash -c '\
+  for home in /home/pi /home/sam; do \
+    if test -x "$home/pi-ambient-synth/scripts/firstboot-heavy.sh"; then \
+      exec bash "$home/pi-ambient-synth/scripts/firstboot-heavy.sh"; \
+    fi; \
+  done; \
+  echo "firstboot-heavy: missing script" >&2; exit 1'
+
+[Install]
+WantedBy=multi-user.target

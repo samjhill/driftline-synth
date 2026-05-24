@@ -19,7 +19,9 @@ disable_ghostroll_autostart() {
   for u in "${units[@]}"; do
     sudo systemctl stop "$u" 2>/dev/null || true
     sudo systemctl disable "$u" 2>/dev/null || true
-    sudo systemctl mask "$u" 2>/dev/null || true
+    if ! sudo systemctl mask "$u" 2>/dev/null; then
+      sudo ln -sf /dev/null "/etc/systemd/system/$u" 2>/dev/null || true
+    fi
     echo "    $u: stopped, disabled, masked"
   done
 

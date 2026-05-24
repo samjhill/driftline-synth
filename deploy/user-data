@@ -1,72 +1,22 @@
 #cloud-config
-# First boot: stepped e-ink progress, WiFi wait, full install.
+# Minimal cloud-init — WiFi (network-config), user (Imager), SSH, install firstboot systemd unit only.
+# All provisioning runs in pi-ambient-firstboot.service (not runcmd).
 
 package_update: false
+package_upgrade: false
 timezone: America/New_York
 
-bootcmd:
-  - mkdir -p /boot/firmware/pi-ambient-synth/boot-logs /boot/pi-ambient-synth/boot-logs 2>/dev/null || true
-  - echo "cloud-init bootcmd" > /boot/firmware/pi-ambient-synth/boot-logs/cloud-init-bootcmd.log 2>/dev/null || echo "cloud-init bootcmd" > /boot/pi-ambient-synth/boot-logs/cloud-init-bootcmd.log 2>/dev/null || true
-
-packages:
-  - python3-pil
-  - python3-yaml
-  - python3-spidev
-  - python3-rpi.gpio
-  - python3-gpiozero
-  - python3-lgpio
-  - git
-
 runcmd:
-  - mkdir -p /var/log /var/lib/pi-ambient-synth
+  - touch /boot/firmware/ssh /boot/ssh 2>/dev/null || true
+  - systemctl enable ssh 2>/dev/null || systemctl enable sshd 2>/dev/null || true
+  - systemctl start ssh 2>/dev/null || systemctl start sshd 2>/dev/null || true
   - |
-    set -e
-    mkdir -p /var/log
-    BOOT=""
-    BOOT_LOG=""
+    set +e
     for d in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do
-      if test -f "$d/scripts/pi-deploy-sync.sh"; then
-        BOOT="$d"
-        break
+      if test -x "$d/scripts/install_firstboot_unit.sh"; then
+        bash "$d/scripts/install_firstboot_unit.sh"
+        exit 0
       fi
     done
-    if test -z "$BOOT"; then
-      echo "pi-ambient-synth not found on boot" >> /var/log/pi-ambient-synth-deploy.log
-      exit 1
-    fi
-    BOOT_LOG="$BOOT/boot-logs"
-    mkdir -p "$BOOT_LOG"
-    exec >>"$BOOT_LOG/first-boot.log" 2>&1
-    echo "=== first-boot $(date -Iseconds) ==="
-    export FIRST_BOOT_TRACK=1
-    export FIRST_BOOT_TOTAL=12
-    export MARKER_DIR=/var/lib/pi-ambient-synth
-    chmod +x "$BOOT/scripts/boot_display.sh" "$BOOT/scripts/pi-deploy-sync.sh" \
-      "$BOOT/scripts/ensure_waveshare_vendor.sh" "$BOOT/scripts/announce_network.sh" 2>/dev/null || true
-    BOOT_SRC="$BOOT/src" INSTALL_DIR="$BOOT" \
-      "$BOOT/scripts/boot_display.sh" boot "First boot" "Pi Ambient Synth" "starting"
-    BOOT_SRC="$BOOT/src" INSTALL_DIR="$BOOT" \
-      "$BOOT/scripts/boot_display.sh" wifi "WiFi" "connecting" "please wait"
-    for i in $(seq 1 45); do
-      if ping -c1 -W2 8.8.8.8 >/dev/null 2>&1 || ping -c1 -W2 1.1.1.1 >/dev/null 2>&1; then
-        INSTALL_DIR="$BOOT" PYTHONPATH="$BOOT/src" \
-          python3 "$BOOT/scripts/announce_network.py" 2>/dev/null || \
-          BOOT_SRC="$BOOT/src" INSTALL_DIR="$BOOT" "$BOOT/scripts/announce_network.sh" 2>/dev/null || true
-        break
-      fi
-      if test $i -eq 15; then
-        "$BOOT/scripts/boot_display.sh" wifi "WiFi" "still trying" "check router"
-      fi
-      sleep 2
-    done
-    chmod +x "$BOOT/scripts/ensure_waveshare_vendor.sh" 2>/dev/null || true
-    INSTALL_DIR=/home/pi/pi-ambient-synth BOOT_TREE="$BOOT" \
-      bash "$BOOT/scripts/ensure_waveshare_vendor.sh" >> /var/log/pi-ambient-synth-eink.log 2>&1 || true
-    BOOT_SRC="$BOOT/src" INSTALL_DIR="$BOOT" \
-      "$BOOT/scripts/boot_display.sh" display "Pi Ambient Synth" "e-ink ready" ""
-    export INSTALL_FIRST_BOOT=1
-    "$BOOT/scripts/pi-deploy-sync.sh" bootstrap
-    "$BOOT/scripts/boot_display.sh" ready "First boot done" "reboot optional" ""
-    cp -f /var/log/pi-ambient-synth-deploy.log "$BOOT_LOG/" 2>/dev/null || true
-    cp -f /var/log/pi-ambient-synth-eink.log "$BOOT_LOG/" 2>/dev/null || true
-    cp -f /var/log/cloud-init-output.log "$BOOT_LOG/" 2>/dev/null || true
+    echo "$(date -Iseconds) [fail] CLOUD_INIT no install_firstboot_unit.sh" \
+      >> /boot/firmware/pi-ambient-firstboot-status.txt 2>/dev/null || true

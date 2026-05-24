@@ -1,0 +1,11 @@
+[Unit]
+Description=Deprecated — use pi-ambient-firstboot.service
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

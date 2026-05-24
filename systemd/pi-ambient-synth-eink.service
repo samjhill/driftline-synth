@@ -1,0 +1,24 @@
+[Unit]
+Description=Pi Ambient Synth e-ink display (single GPIO/SPI owner)
+After=sound.target pi-ambient-synth-midi.service
+Wants=pi-ambient-synth-midi.service
+# Audio must never depend on e-ink — no RequiredBy on MIDI.
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+Environment=HOME=/home/pi
+Environment=GPIOZERO_PIN_FACTORY=lgpio
+Environment=EINK_LOG=/var/log/pi-ambient-synth-eink.log
+Environment=MARKER_DIR=/var/lib/pi-ambient-synth
+Environment=EINK_QUEUE_DIR=/run/pi-ambient-synth/eink-queue
+ExecStartPre=/bin/bash -c 'K=/home/pi/pi-ambient-synth/scripts/eink_kill_legacy_holders.sh; test -x "$K" && exec "$K" || exit 0'
+ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/scripts/eink_service.py
+Restart=on-failure
+RestartSec=15
+# Panel refresh can take 15–30s; do not kill mid-update.
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

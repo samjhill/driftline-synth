@@ -3,11 +3,27 @@
 set -euo pipefail
 
 DISK="${1:-}"
-IMG_XZ_URL="${IMG_XZ_URL:-https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-04-21/2026-04-21-raspios-trixie-arm64-lite.img.xz}"
-IMG_SHA256="${IMG_SHA256:-4cd31df026fd82243805a326dc0cafd7383f7e3d30c9413e7044d507aae281e2}"
+# FLASH_ARCH=arm64 (default) or armhf (32-bit Pi 3 fallback if 64-bit won't boot)
+FLASH_ARCH="${FLASH_ARCH:-arm64}"
+case "$FLASH_ARCH" in
+  arm64|aarch64|64)
+    IMG_XZ_URL="${IMG_XZ_URL:-https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-04-21/2026-04-21-raspios-trixie-arm64-lite.img.xz}"
+    IMG_SHA256="${IMG_SHA256:-4cd31df026fd82243805a326dc0cafd7383f7e3d30c9413e7044d507aae281e2}"
+    IMG_BASENAME="2026-04-21-raspios-trixie-arm64-lite"
+    ;;
+  armhf|arm32|32)
+    IMG_XZ_URL="${IMG_XZ_URL:-https://downloads.raspberrypi.com/raspios_lite_armhf/images/raspios_lite_armhf-2026-04-21/2026-04-21-raspios-trixie-armhf-lite.img.xz}"
+    IMG_SHA256="${IMG_SHA256:-f393b8bc3fc49aef49ddc5d5af124333002f34e4b23ede439789145e5280d210}"
+    IMG_BASENAME="2026-04-21-raspios-trixie-armhf-lite"
+    ;;
+  *)
+    echo "ERROR: FLASH_ARCH must be arm64 or armhf (got: $FLASH_ARCH)"
+    exit 1
+    ;;
+esac
 CACHE_DIR="${CACHE_DIR:-$HOME/Library/Caches/pi-ambient-synth}"
-IMG_XZ="$CACHE_DIR/2026-04-21-raspios-trixie-arm64-lite.img.xz"
-IMG="$CACHE_DIR/2026-04-21-raspios-trixie-arm64-lite.img"
+IMG_XZ="$CACHE_DIR/${IMG_BASENAME}.img.xz"
+IMG="$CACHE_DIR/${IMG_BASENAME}.img"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ -z "$DISK" ]]; then
@@ -17,15 +33,17 @@ if [[ -z "$DISK" ]]; then
   exit 1
 fi
 
-if [[ "$DISK" == *s* ]]; then
+if [[ "$DISK" =~ s[0-9]+$ ]]; then
   echo "ERROR: Pass the whole disk (e.g. disk5), not a partition (disk5s1)."
   exit 1
 fi
 
-echo "Target: /dev/$DISK"
+echo "Target: /dev/$DISK  (FLASH_ARCH=$FLASH_ARCH)"
 diskutil info "/dev/$DISK" | grep -E "Device / Media Name|Disk Size|Protocol"
-read -r -p "This ERASES /dev/$DISK. Type YES to continue: " confirm
-[[ "$confirm" == "YES" ]] || { echo "Aborted."; exit 1; }
+if [[ "${FLASH_SKIP_CONFIRM:-0}" != "1" ]]; then
+  read -r -p "This ERASES /dev/$DISK. Type YES to continue: " confirm
+  [[ "$confirm" == "YES" ]] || { echo "Aborted."; exit 1; }
+fi
 
 mkdir -p "$CACHE_DIR"
 if [[ ! -f "$IMG_XZ" ]]; then
@@ -33,8 +51,17 @@ if [[ ! -f "$IMG_XZ" ]]; then
   curl -L --progress-bar -o "$IMG_XZ" "$IMG_XZ_URL"
 fi
 
-echo "Verifying SHA256..."
-echo "$IMG_SHA256  $IMG_XZ" | shasum -a 256 -c -
+if [[ -n "$IMG_SHA256" ]]; then
+  echo "Verifying SHA256..."
+  echo "$IMG_SHA256  $IMG_XZ" | shasum -a 256 -c -
+elif [[ -f "${IMG_XZ}.sha256" ]]; then
+  echo "Verifying SHA256 (sidecar)..."
+  shasum -a 256 -c "${IMG_XZ}.sha256"
+else
+  echo "Downloading SHA256 sidecar..."
+  curl -fsSL -o "${IMG_XZ}.sha256" "${IMG_XZ_URL}.sha256"
+  shasum -a 256 -c "${IMG_XZ}.sha256"
+fi
 
 if [[ ! -f "$IMG" ]]; then
   echo "Decompressing image..."
@@ -44,10 +71,21 @@ fi
 echo "Unmounting /dev/$DISK..."
 diskutil unmountDisk force "/dev/$DISK"
 
-echo "Writing image (sudo required)..."
-sudo dd if="$IMG" of="/dev/r$DISK" bs=4m conv=sync status=progress
-
-sync
+echo "Writing image (admin password required on macOS)..."
+run_dd() {
+  local rdisk="/dev/r${DISK}"
+  if [[ "$(uname -s)" == Darwin ]]; then
+    # Prefer asr (often works when dd is blocked from IDE sandboxes).
+    if /usr/bin/osascript -e "do shell script \"asr restore --source '${IMG}' --target '${rdisk}' --erase --noprompt && sync\" with administrator privileges" 2>/dev/null; then
+      return 0
+    fi
+    /usr/bin/osascript -e "do shell script \"dd if='${IMG}' of='${rdisk}' bs=4m conv=sync && sync\" with administrator privileges"
+  else
+    sudo dd if="$IMG" of="$rdisk" bs=4m conv=sync status=progress
+    sync
+  fi
+}
+run_dd
 diskutil eject "/dev/$DISK"
 sleep 3
 
@@ -103,9 +141,16 @@ FB
 }
 
 if [[ "${2:-}" == "--configure-only" ]] && [[ -n "${3:-}" ]]; then
-  configure_boot "$3"
-else
-  [[ -n "$BOOT" ]] && configure_boot "$BOOT"
+  BOOT="$3"
+fi
+
+if [[ -n "$BOOT" ]]; then
+  if [[ -x "$ROOT/scripts/sync_to_sd_mac.sh" ]] && [[ "${FLASH_USE_SYNC:-1}" == "1" ]]; then
+    echo "Running full Pi Ambient Synth SD sync (deploy.conf, WiFi, cloud-init)..."
+    "$ROOT/scripts/sync_to_sd_mac.sh" "$BOOT"
+  else
+    configure_boot "$BOOT"
+  fi
 fi
 
 echo ""

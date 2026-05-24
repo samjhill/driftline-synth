@@ -24,9 +24,7 @@ def _src_dir() -> Path:
 sys.path.insert(0, str(_src_dir()))
 
 from config_loader import load_config
-from eink_display import EInkDisplay
 from network_info import network_snapshot, save_network_info
-from status_display import StatusDisplay
 
 
 def _setup_eink_logging() -> None:
@@ -81,42 +79,19 @@ def main() -> int:
 
     detail = url.replace("http://", "")[:28]
     root = Path(__file__).resolve().parent.parent
-    boot_display = root / "scripts" / "boot_display.sh"
-    if boot_display.is_file():
-        env = {
-            **os.environ,
-            "EINK_FORCE": "1",
-            "EINK_LOG": os.environ.get(
-                "EINK_LOG", "/var/log/pi-ambient-synth-eink.log"
-            ),
-            "INSTALL_DIR": str(root),
-        }
-        rc = subprocess.run(
-            [str(boot_display), "network", ip, host, detail],
-            env=env,
-            check=False,
-        ).returncode
-        return rc
-
+    sys.path.insert(0, str(root / "src"))
     _setup_eink_logging()
-    os.environ["EINK_FORCE"] = "1"
-    display = EInkDisplay(config)
-    if not display.init():
-        logging.error(
-            "E-ink init failed — check SPI, gpiozero, vendor/waveshare "
-            "(see %s)",
-            os.environ.get("EINK_LOG", "/var/log/pi-ambient-synth-eink.log"),
-        )
-        return 1
-
-    renderer = StatusDisplay(config)
-    img = renderer.render("network", ip, host, detail)
     try:
-        display.show_image(img, full_refresh=True)
-        logging.info("Network on e-ink: %s (%s)", ip, host)
-    finally:
-        display.release()
-    return 0
+        from eink_queue import enqueue_status
+
+        if enqueue_status("network", ip, host, detail) is None:
+            logging.warning("e-ink network status enqueue failed")
+            return 1
+        logging.info("Network queued for e-ink: %s (%s)", ip, host)
+        return 0
+    except Exception as e:
+        logging.warning("e-ink queue unavailable: %s", e)
+        return 0
 
 
 if __name__ == "__main__":

@@ -1,16 +1,15 @@
 [Unit]
 Description=Pi Ambient Synth e-ink early boot splash
 DefaultDependencies=no
-After=local-fs.target
+After=local-fs.target pi-ambient-synth-eink-prepare.service
+Requires=pi-ambient-synth-eink-prepare.service
 Before=network-pre.target pi-ambient-synth-deploy.service
 
 [Service]
 Type=oneshot
 Environment=EINK_LOG=/var/log/pi-ambient-synth-eink.log
 Environment=GPIOZERO_PIN_FACTORY=lgpio
-Environment=EINK_DISPLAY_TIMEOUT=45
-# After local-fs so /var/lib exists; avoid racing pisugar GPIO on very early boot.
-After=local-fs.target
+Environment=EINK_DISPLAY_TIMEOUT=180
 ExecStart=/bin/bash -c 'B=/home/pi/pi-ambient-synth/scripts/boot_display.sh; if test ! -x "$B"; then B=/boot/firmware/pi-ambient-synth/scripts/boot_display.sh; fi; if test ! -x "$B"; then B=/boot/pi-ambient-synth/scripts/boot_display.sh; fi; exec "$B" boot "Booting" "Pi Ambient Synth" "power on"'
 # Splash failure must not block or alarm — patch refresh runs again after synth starts.
 SuccessExitStatus=0 1

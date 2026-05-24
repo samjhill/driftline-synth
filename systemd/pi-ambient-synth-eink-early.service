@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Ambient Synth bootcmd status only (no display — masked on factory boot)
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=30
+ExecStart=/bin/bash -c '\
+  for d in /boot/firmware/pi-ambient-synth /boot/pi-ambient-synth; do \
+    test -x "$d/scripts/eink_boot_early.sh" && exec bash "$d/scripts/eink_boot_early.sh"; \
+  done; echo "eink_boot_early: missing" >&2; exit 1'
+
+[Install]
+WantedBy=sysinit.target

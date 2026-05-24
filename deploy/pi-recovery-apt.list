@@ -1,0 +1,8 @@
+# Recovery mode — FluidSynth + MIDI + monitor only (no SC/JACK/e-ink).
+fluidsynth
+fluid-soundfont-gm
+python3-venv
+python3-pip
+python3-yaml
+alsa-utils
+git

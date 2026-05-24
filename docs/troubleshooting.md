@@ -1,5 +1,41 @@
 # Troubleshooting
 
+## Pi never writes anything to bootfs (no SSH, no logs)
+
+**Stop debugging cloud-init, firstboot, and e-ink** until Linux proves it booted this SD.
+
+1. Factory SD with boot sentinel: see [boot-sentinel.md](boot-sentinel.md)
+2. Autobringup (install on Pi after SSH): [autobringup.md](autobringup.md)
+3. Boot Pi 3–5 minutes, re-read SD: `cat /Volumes/bootfs/pi-boot-sentinel.txt`
+3. **No file** → wrong SD, bad flash, wrong arch (try `FLASH_ARCH=armhf`), or Pi not booting — use HDMI/serial
+4. **File exists** → then proceed with cloud-init / firstboot / WiFi / SSH
+
+## First boot: status shows bootcmd but not runcmd / no e-ink
+
+If `pi-ambient-firstboot-status.txt` only has `CLOUD_INIT bootcmd` (no `runcmd start` or `eink-early`):
+
+- **`network-config` on the SD must not start with `#cloud-config`** — that header is only for `user-data`. It breaks cloud-init’s network stage so `runcmd` never runs (no e-ink service, no firstboot-light).
+- Fix: remove the header from `deploy/secrets/network-config.local`, re-run `build_factory_sd_mac.sh`, or let sync strip it (latest `sync_to_sd_mac.sh`).
+- Confirm after boot: status file should include `CLOUD_INIT runcmd start` and `bootcmd eink_boot_early`.
+
+## E-ink log says BOOT ok but panel looked blank
+
+Early boot has **no python3-pil** yet (`PIL render failed` in `boot-logs/eink-early.log`). Old code flashed black then **cleared to white and slept** — looks blank.
+
+- **Fix (repo):** no-PIL path holds **full black ~4s** on BOOT and skips `epd.sleep()`.
+- Log `eink BOOT ok` ~50s after power-on is normal (BUSY pin stuck HIGH).
+- **WiFi:** if `wlan0 | False` in cloud-init logs, fix `network-config` (no `#cloud-config` header) and re-sync.
+
+## First boot: no SSH and blank e-ink (~3+ min)
+
+The Pi is probably **not on WiFi** (check your router; no `raspberrypi` / Pi MAC in DHCP), or the SD still has **old cloud-init** that runs a long `packages:` apt before SSH/e-ink.
+
+1. Power off, insert SD in Mac: `./scripts/check_sd_boot_mac.sh`
+2. Re-prepare: `sudo ./scripts/wipe_cloud_init_mac.sh` then `./scripts/build_factory_sd_mac.sh /Volumes/bootfs`
+3. Confirm `network-config` on the card and **2.4 GHz** SSID.
+
+See [fast-first-boot.md](fast-first-boot.md).
+
 ## Wi‑Fi never connects (wlan0 down in cloud-init logs)
 
 If `cloud-init-output.log` shows `wlan0 | False` with no IP:
@@ -492,6 +528,29 @@ If this still SIGBUSes, reinstall numpy for the venv ABI (`pip install --force-r
 
 Autonomous agents: use `.pi-e2e-status-page.txt` after `./scripts/run_pi_iterate.sh` — journal checks only inspect the **last 8 lines** so old crash loops do not fail a healthy run.
 
+## 2.13" e-Paper HAT V4 rev 2.1 — no visible update (software OK)
+
+**Symptoms:** Logs show `E-ink display initialized (epd2in13_V4)` and tests exit 0, but the glass never changes. `BUSY` GPIO **24** often reads **stuck HIGH** (1) even after reseating the Pi header.
+
+**Checklist (hardware first):**
+
+1. **Flex cable (most common):** Reseating the 40-pin header does **not** reseat the **24-pin FPC** between the driver PCB and the e-ink glass. Power off, lift the black latch on the **panel connector**, push the ribbon fully in, close the latch.
+2. **Model:** Silkscreen should be **2.13inch e-Paper HAT** (black/white V4). **HAT (B)** (red) and **HAT+** need different drivers — wrong driver = no image.
+3. **SPI:** `ls /dev/spidev0.0` must exist; user `pi` in groups `spi` and `gpio`.
+4. **Stop racing services:** `bash scripts/eink_stop_competing_services.sh` (disables `pi-ambient-synth-audio-display` which also grabs the panel on boot).
+
+**Prove the panel (user eyes required):**
+
+```bash
+cd ~/pi-ambient-synth
+bash scripts/eink_stop_competing_services.sh
+GPIOZERO_PIN_FACTORY=lgpio .venv/bin/python scripts/eink_official_waveshare_v4_test.py
+```
+
+You should see: flash **white** → full **black** (~5s) → black bar + “Waveshare V4 / HAT rev 2.1”. If still unchanged, try `EINK_USE_DEV_SO=1` with the same command.
+
+Production refresh after fix: `scripts/eink_show_patch_status.sh` (8s refresh wait when BUSY is stuck).
+
 ## E-ink display does not update
 
 - SPI enabled: `ls /dev/spidev*`
@@ -508,6 +567,24 @@ Autonomous agents: use `.pi-e2e-status-page.txt` after `./scripts/run_pi_iterate
   ```bash
   EINK_FORCE=1 ./scripts/boot_display.sh ready "Test" "e-ink OK" ""
   ```
+
+## E-ink on boot (Pi Ambient Synth)
+
+After `install.sh` or `scripts/eink_enable_boot_units.sh`, systemd runs:
+
+1. **`pi-ambient-synth-eink-prepare`** — masks/stops GhostRoll, removes `/usr/local` `waveshare_epd`, clears GPIO lock files
+2. **`pi-ambient-synth-eink-boot`** — **serialized** `eink_boot_sequence.sh`: splash → wait for LAN → network IP → patch (avoids GPIO races from parallel units + MIDI)
+
+Legacy units (`boot-display`, `network-announce`, `eink-patch`) are **masked** when the boot sequence unit is enabled.
+
+If the panel stays blank after reboot but `eink_official_minimal_test.py` works, check the log for `SKIPPED_LOCKED` or parallel refreshes:
+
+```bash
+strings /var/log/pi-ambient-synth-eink.log | tail -40
+sudo systemctl start pi-ambient-synth-eink-boot.service   # one-shot retry
+```
+
+Manual isolation (stops synth splash too): `scripts/eink_purge_legacy_projects.sh --aggressive`, then reboot, then `scripts/eink_enable_boot_units.sh`.
 
 ## E-ink: `GPIO busy` — GhostRoll still running
 
@@ -545,6 +622,9 @@ A previous app on the same Pi often leaves **systemd units**, **Python processes
 - An **enabled** service that restarts on boot and grabs GPIO again
 - A **system-wide** Waveshare install that shadows `vendor/waveshare`
 - **Stuck lgpio** state until reboot (if an old process was killed with `SIGKILL` / `timeout`)
+- **GhostRoll** units (`ghostroll-eink.service`, `ghostroll-watch.service`) — `ghostroll-eink` may point at a missing `/usr/local/sbin/ghostroll-eink-waveshare213v4.py`; `sudo systemctl disable --now` both, then mask or null-link the e-ink unit
+- **Synth boot splash** — disable/mask `pi-ambient-synth-boot-display`, `pi-ambient-synth-audio-display`, and `pi-ambient-synth-network-announce` while isolating the HAT
+- **Stranded test processes** — a killed `eink_official_minimal_test.py` (e.g. from `timeout`) keeps BCM 17/18/24/25 claimed (`gpioinfo` shows consumer `lg`); `pkill -f eink_official_minimal_test` before retry
 
 On the Pi:
 
