@@ -57,6 +57,13 @@ def main() -> int:
     eng.demo_note(67, 100, 0.8)
     eng.stop()
 
+    for unit in ("pi-ambient-synth-midi", "pi-ambient-synth-monitor"):
+        subprocess.run(
+            ["sudo", "-n", "systemctl", "start", f"{unit}.service"],
+            check=False,
+            capture_output=True,
+        )
+
     print("")
     print("FLUIDSYNTH_HEADPHONE_DEMO_DONE_USER_MUST_CONFIRM")
     print("Listen on the Pi 3.5 mm headphone jack.")
