@@ -128,6 +128,30 @@ if systemctl is-active --quiet pi-ambient-synth-eink.service 2>/dev/null; then
 fi
 echo "OK: legacy SC/autobringup/e-ink not active"
 
+_pisugar_cfg="$(
+  "$PY" -c "
+import yaml
+from pathlib import Path
+c = yaml.safe_load(Path('$ROOT/config/default.yaml').read_text())
+p = c.get('pisugar') or {}
+print('1' if p.get('enabled') and p.get('reseed_on_button', True) else '0')
+" 2>/dev/null || echo 0
+)"
+if [[ "$_pisugar_cfg" == "1" ]]; then
+  if systemctl is-active --quiet pisugar-server 2>/dev/null && [[ -S /tmp/pisugar-server.sock ]]; then
+    _btn="$(bash "$ROOT/scripts/lib/pisugar_query.sh" "get button_shell single" 2>/dev/null || true)"
+    if echo "$_btn" | grep -q pi_pisugar_button_reseed; then
+      echo "OK: PiSugar single-tap → reseed wired"
+    else
+      echo "WARN: pisugar-server up but button not wired — run ./scripts/setup_recovery_pisugar_button.sh"
+    fi
+  else
+    echo "NOTE: PiSugar reseed enabled in config but pisugar-server not running / no I2C"
+    echo "      Fix model: sudo ./scripts/detect_pisugar_model.sh"
+    echo "      Then: ./scripts/setup_recovery_pisugar_button.sh"
+  fi
+fi
+
 echo ""
 echo "RECOVERY_OK"
 exit 0

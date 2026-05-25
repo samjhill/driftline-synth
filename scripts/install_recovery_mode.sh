@@ -63,7 +63,7 @@ fi
 sudo -u "$PI_USER" "$ROOT/.venv/bin/pip" install -q --upgrade pip
 sudo -u "$PI_USER" "$ROOT/.venv/bin/pip" install -q -r "$ROOT/requirements-recovery.txt"
 
-echo "==> Disable e-ink / PiSugar in config (recovery)..."
+echo "==> Recovery config (e-ink off, PiSugar reseed on)..."
 sudo -u "$PI_USER" env HOME="/home/$PI_USER" "$ROOT/.venv/bin/python" -c "
 from pathlib import Path
 import yaml
@@ -71,10 +71,12 @@ p = Path('$ROOT/config/default.yaml')
 data = yaml.safe_load(p.read_text())
 data.setdefault('eink', {})['enabled'] = False
 data['eink']['update_on_reseed'] = False
-data.setdefault('pisugar', {})['enabled'] = False
+data.setdefault('pisugar', {})['enabled'] = True
+data['pisugar']['reseed_on_button'] = True
+data['pisugar']['show_on_display'] = False
 data.setdefault('audio', {})['backend'] = 'fluidsynth'
 p.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
-print('    config/default.yaml: eink off, audio=fluidsynth')
+print('    config/default.yaml: eink off, pisugar reseed on, audio=fluidsynth')
 "
 
 mkdir -p "$ROOT/state"
@@ -135,6 +137,9 @@ EOF
 systemctl daemon-reload
 systemctl enable pi-ambient-synth-midi.service pi-ambient-synth-monitor.service
 systemctl restart pi-ambient-synth-midi.service pi-ambient-synth-monitor.service
+
+echo "==> PiSugar reseed button (if pisugar-server installed)..."
+bash "$ROOT/scripts/setup_recovery_pisugar_button.sh" || true
 
 sleep 2
 echo ""

@@ -25,6 +25,7 @@ _sudo() {
 
 echo "==> Recovery synth — start"
 _sudo systemctl restart pi-ambient-synth-midi.service pi-ambient-synth-monitor.service
+bash "$ROOT/scripts/setup_recovery_pisugar_button.sh" || true
 sleep 2
 
 echo ""
@@ -70,5 +71,5 @@ echo "Play KeyStep (data USB). If you plugged in **after** boot and hear nothing
 sudo systemctl restart pi-ambient-synth-midi.service
 ```
 
-Reseed: Shift+Play or monitor button."
+Reseed: PiSugar single tap, Shift+Play, or monitor **New patch** button."
 echo "Validate: ./scripts/recovery_validation.sh"

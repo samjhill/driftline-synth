@@ -2,7 +2,7 @@
 
 Restore a **stable musical instrument** after factory/autobringup experiments.
 
-**In scope:** FluidSynth → headphones, KeyStep MIDI, web monitor, reseed.  
+**In scope:** FluidSynth → headphones, KeyStep MIDI, web monitor, reseed (monitor, KeyStep, **PiSugar button**).  
 **Out of scope:** e-ink, autobringup, cloud-init SD prep, Mac offline rootfs surgery, SuperCollider, JACK, GhostRoll.
 
 ## Fresh install (manual)
@@ -42,7 +42,32 @@ cd ~/pi-ambient-synth
 
 - **Monitor:** `http://<pi-ip>:8080/` (or `http://raspberrypi.local:8080/`)
 - **Audio:** KeyStep → `pi-ambient-synth-midi` → FluidSynth → `plughw:0,0` → headphones
-- **Reseed:** KeyStep gestures (see `docs/keystep_reseed.md`) or monitor UI
+- **Reseed:** PiSugar **single tap** (if Power Manager installed), KeyStep gestures (`docs/keystep_reseed.md`), or monitor **New patch**
+
+## PiSugar button (optional)
+
+Recovery keeps **e-ink off** but wires the PiSugar physical button to randomize the patch (same as monitor reseed).
+
+1. Install [PiSugar Power Manager](https://docs.pisugar.com/docs/product-wiki/battery/pisugar-power-manager) on the Pi:
+   ```bash
+   cd ~/pi-ambient-synth
+   ./scripts/install_pisugar_server.sh
+   ```
+   Pick **PiSugar 2 Pro / 2 Plus** (or your board) when `dpkg-reconfigure` prompts.
+
+2. Register the button (after model detect if battery reads `I2C not connected`):
+   ```bash
+   sudo ./scripts/detect_pisugar_model.sh   # if button still dead after install
+   ./scripts/setup_recovery_pisugar_button.sh
+   ```
+
+3. Test: single tap on the PiSugar button — you should hear a new GM program within a second or two. Debug:
+   ```bash
+   journalctl -u pi-ambient-synth-midi -f
+   echo "get button_shell single" | nc -U /tmp/pisugar-server.sock
+   ```
+
+Re-run `./scripts/start_recovery_synth.sh` after reboot; it re-registers the button if `pisugar-server` is active.
 
 ## What gets installed
 
