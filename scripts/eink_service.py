@@ -176,9 +176,8 @@ def _process_one(
         write_service_state(last_error=str(e), queue_depth=queue_depth())
     finally:
         path.unlink(missing_ok=True)
-        _sleep_panel(display)
         write_service_state(
-            panel_sleeping=True,
+            panel_sleeping=False,
             queue_depth=queue_depth(),
             processing=None,
         )
@@ -243,8 +242,6 @@ def main() -> int:
         logger.exception("startup display failed")
         write_eink_status("ERROR", detail=str(e))
         write_service_state(last_error=str(e))
-    finally:
-        _sleep_panel(display)
 
     poll = float(eink_cfg.get("service_poll_seconds", 0.5))
     while _running:
@@ -252,6 +249,7 @@ def main() -> int:
         time.sleep(poll)
 
     logger.info("e-ink service stopping")
+    _sleep_panel(display)
     from eink_service_state import mark_inactive
 
     mark_inactive()

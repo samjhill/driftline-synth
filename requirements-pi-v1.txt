@@ -1,7 +1,9 @@
-# FluidSynth V1 — Pi offline pip (no numpy, no SC stack).
+# FluidSynth V1 + e-ink — Pi offline pip (no numpy, no SC stack).
 mido
 python-rtmidi
 python-osc
 PyYAML
 Pillow
 gpiozero
+spidev
+lgpio

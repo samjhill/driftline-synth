@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enable single e-ink service; mask legacy display units that raced on GPIO.
+# Enable single e-ink service (ingest-style PNG watch; masks legacy queue boot units).
 set -euo pipefail
 
 ROOT="${INSTALL_DIR:-/home/pi/pi-ambient-synth}"
@@ -19,10 +19,16 @@ for u in "${legacy[@]}"; do
   sudo systemctl mask "$u" 2>/dev/null || true
 done
 
+sudo mkdir -p /etc/pi-ambient-synth
+if [[ -f "$ROOT/deploy/pi-eink.env" ]]; then
+  sudo cp "$ROOT/deploy/pi-eink.env" /etc/pi-ambient-synth/eink.env
+fi
+
+systemctl unmask pi-ambient-synth-eink.service 2>/dev/null || true
 sudo cp "$ROOT/systemd/pi-ambient-synth-eink.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable pi-ambient-synth-eink.service
 sudo systemctl restart pi-ambient-synth-eink.service 2>/dev/null || \
   sudo systemctl start pi-ambient-synth-eink.service 2>/dev/null || true
 
-echo "E-ink: pi-ambient-synth-eink.service enabled; legacy display units masked."
+echo "E-ink: pi-ambient-synth-eink.service (ingest-style); legacy display units masked."

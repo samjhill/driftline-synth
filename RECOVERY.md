@@ -2,8 +2,8 @@
 
 Restore a **stable musical instrument** after factory/autobringup experiments.
 
-**In scope:** FluidSynth → headphones, KeyStep MIDI, web monitor, reseed (monitor, KeyStep, **PiSugar button**).  
-**Out of scope:** e-ink, autobringup, cloud-init SD prep, Mac offline rootfs surgery, SuperCollider, JACK, GhostRoll.
+**In scope:** FluidSynth → headphones, KeyStep MIDI, web monitor, reseed (monitor, KeyStep, **PiSugar button**), **e-ink (optional add-on)**.  
+**Out of scope:** autobringup, cloud-init SD prep, Mac offline rootfs surgery, SuperCollider, JACK, GhostRoll.
 
 ## Fresh install (manual)
 
@@ -68,6 +68,20 @@ Recovery keeps **e-ink off** but wires the PiSugar physical button to randomize 
    ```
 
 Re-run `./scripts/start_recovery_synth.sh` after reboot; it re-registers the button if `pisugar-server` is active.
+
+## E-ink display (optional add-on)
+
+Uses the **ingest / GhostRoll known-good pattern**: render a **250×122 PNG**, `pi_eink_waveshare213v4.py` watches it and drives the panel with **stock `waveshare-epd`** (root, no lgpio queue).
+
+```bash
+cd ~/pi-ambient-synth
+sudo ./scripts/enable_recovery_eink.sh
+./scripts/validate_recovery_eink.sh
+```
+
+Reseed and monitor updates write `/var/lib/pi-ambient-synth/eink-status.png`; the e-ink service picks up changes within ~2s.
+
+Debug: `journalctl -u pi-ambient-synth-eink -f`
 
 ## What gets installed
 

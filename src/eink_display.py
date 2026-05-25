@@ -370,8 +370,7 @@ class EInkDisplay:
             self._epd.displayPartial(buf)
         else:
             self._epd.display(buf)
-        if not self._busy_bypass:
-            self._wait_panel_refresh()
+        self._wait_panel_refresh()
         self._frame_count += 1
 
     def show_patch(self, patch: Patch, image: Image.Image) -> None:

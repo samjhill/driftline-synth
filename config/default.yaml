@@ -105,10 +105,8 @@ pisugar:
 
 eink:
   enabled: true
-  # V1: pi-ambient-synth-eink.service owns GPIO/SPI; all clients use eink_queue only.
+  # ingest-style: pi_eink_waveshare213v4.py watches status_image_path (250x122 PNG)
   service_mode: true
-  service_poll_seconds: 0.5
-  queue_dir: "/run/pi-ambient-synth/eink-queue"
   skip_numpy_sigil: true
   width: 250
   height: 122
@@ -116,8 +114,7 @@ eink:
   update_on_reseed: true
   partial_refresh: false
   full_refresh_boot: false
-  busy_active_high: false
-  refresh_wait_ms: 15000
+  status_image_path: "/var/lib/pi-ambient-synth/eink-status.png"
   show_text_labels: true
   show_playing_note: false
   clear_on_shutdown: false

@@ -1,4 +1,4 @@
-"""Enqueue e-ink updates for pi-ambient-synth-eink.service (never touch GPIO/SPI here)."""
+"""Enqueue e-ink updates via status PNG (ingest-style; pi_eink_waveshare213v4 watches mtime)."""
 
 from __future__ import annotations
 
@@ -16,35 +16,43 @@ def queue_dir() -> Path:
     return Path(raw) if raw else DEFAULT_QUEUE_DIR
 
 
-def _ensure_queue_dir() -> Path:
-    d = queue_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+def _write_png_from_config(fn, *args, **kwargs) -> Path | None:
+    try:
+        from config_loader import load_config
+
+        return fn(load_config(), *args, **kwargs)
+    except Exception:
+        return None
 
 
 def enqueue(payload: dict[str, Any]) -> Path | None:
-    """Append one command for the e-ink service. Returns path or None on failure."""
-    if not payload.get("type"):
-        return None
-    body = dict(payload)
-    body.setdefault("enqueued_at", time.time())
-    d = _ensure_queue_dir()
-    path = d / f"{time.time_ns()}.json"
-    tmp = path.with_suffix(".tmp")
-    try:
-        tmp.write_text(json.dumps(body) + "\n", encoding="utf-8")
-        tmp.rename(path)
-        return path
-    except OSError:
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        return None
+    """Legacy queue API — maps to PNG write for ingest-style e-ink service."""
+    ptype = payload.get("type")
+    if ptype == "patch":
+        return enqueue_patch(
+            name=str(payload.get("name") or ""),
+            subtitle=str(payload.get("subtitle") or ""),
+            detail=str(payload.get("detail") or ""),
+            from_state=bool(payload.get("from_state")),
+        )
+    if ptype == "status":
+        from eink_status_png import write_status_png
+        from config_loader import load_config
+
+        return write_status_png(
+            load_config(),
+            phase=str(payload.get("phase") or "idle"),
+            title=str(payload.get("title") or ""),
+            subtitle=str(payload.get("subtitle") or ""),
+            detail=str(payload.get("detail") or ""),
+        )
+    if ptype == "startup":
+        return enqueue_status("boot", "Pi Ambient Synth", "Ready", "")
+    return None
 
 
 def enqueue_startup() -> Path | None:
-    return enqueue({"type": "startup"})
+    return enqueue_status("boot", "Pi Ambient Synth", "Ready", "")
 
 
 def enqueue_status(
@@ -53,14 +61,15 @@ def enqueue_status(
     subtitle: str = "",
     detail: str = "",
 ) -> Path | None:
-    return enqueue(
-        {
-            "type": "status",
-            "phase": phase,
-            "title": title,
-            "subtitle": subtitle,
-            "detail": detail,
-        }
+    from eink_status_png import write_status_png
+    from config_loader import load_config
+
+    return write_status_png(
+        load_config(),
+        phase=phase,
+        title=title,
+        subtitle=subtitle,
+        detail=detail,
     )
 
 
@@ -71,14 +80,14 @@ def enqueue_patch(
     detail: str = "",
     from_state: bool = False,
 ) -> Path | None:
-    return enqueue(
-        {
-            "type": "patch",
-            "name": name,
-            "subtitle": subtitle,
-            "detail": detail,
-            "from_state": from_state,
-        }
+    from eink_status_png import write_patch_png
+
+    return _write_png_from_config(
+        write_patch_png,
+        name=name,
+        subtitle=subtitle,
+        detail=detail,
+        from_state=from_state,
     )
 
 
