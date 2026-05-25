@@ -477,6 +477,7 @@ def main() -> int:
 
     jack_every = 0
     flues_guard = 0
+    reconnect_tick = 0
     jack_script = root / "scripts" / "ensure_jack_playback.sh"
     try:
         while _running:
@@ -491,6 +492,10 @@ def main() -> int:
                     connect_sh = root / "scripts" / "connect_midi_to_flues.sh"
                     if connect_sh.is_file():
                         subprocess.run(["bash", str(connect_sh)], check=False, timeout=8)
+            reconnect_tick += 1
+            if reconnect_tick >= 500:
+                reconnect_tick = 0
+                midi.maybe_reconnect_preferred()
             midi.poll()
             if not flues_backend and fs_engine is None:
                 flues_guard += 1

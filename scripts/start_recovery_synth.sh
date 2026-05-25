@@ -64,5 +64,11 @@ echo "    http://${_ip:-<pi-ip>}:$MON_PORT/"
 echo "    http://raspberrypi.local:$MON_PORT/  (if mDNS works)"
 
 echo ""
-echo "Play KeyStep (data USB). Reseed: Shift+Play or monitor button."
+echo "Play KeyStep (data USB). If you plugged in **after** boot and hear nothing:
+
+```bash
+sudo systemctl restart pi-ambient-synth-midi.service
+```
+
+Reseed: Shift+Play or monitor button."
 echo "Validate: ./scripts/recovery_validation.sh"

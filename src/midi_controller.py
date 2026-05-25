@@ -168,6 +168,24 @@ class MidiController:
             logger.error("Failed to open MIDI port %s: %s", name, e)
             return False
 
+    def maybe_reconnect_preferred(self) -> bool:
+        """If stuck on Midi Through, switch when KeyStep/Arturia appears (USB hot-plug)."""
+        if self._port_name and not self._is_midi_through(self._port_name):
+            return False
+        name = self.select_port()
+        if not name or name == self._port_name or self._is_midi_through(name):
+            return False
+        logger.info("Hot-plug: switching MIDI input from %s to %s", self._port_name, name)
+        try:
+            if self._port:
+                self._port.close()
+            self._port = mido.open_input(name)
+            self._port_name = name
+            return True
+        except Exception as e:
+            logger.error("Hot-plug MIDI reconnect failed: %s", e)
+            return False
+
     def _channel_ok(self, channel: int) -> bool:
         if self.channel_filter is None:
             return True
