@@ -236,12 +236,31 @@ restart_services() {
   sudo systemctl restart supercollider.service 2>/dev/null || sudo systemctl start supercollider.service 2>/dev/null || true
   sleep 2
   sudo systemctl restart pi-ambient-synth.service 2>/dev/null || sudo systemctl start pi-ambient-synth.service 2>/dev/null || true
+  sudo systemctl restart pi-ambient-synth-monitor.service 2>/dev/null || sudo systemctl start pi-ambient-synth-monitor.service 2>/dev/null || true
+}
+
+announce_network() {
+  local ann
+  for ann in \
+    "$INSTALL_DIR/scripts/announce_network.sh" \
+    /boot/firmware/pi-ambient-synth/scripts/announce_network.sh \
+    /boot/pi-ambient-synth/scripts/announce_network.sh; do
+    if [[ -x "$ann" ]]; then
+      INSTALL_DIR="$INSTALL_DIR" "$ann" || true
+      if [[ -f "$MARKER_DIR/network.json" ]]; then
+        log "Network: $(python3 -c "import json; d=json.load(open('$MARKER_DIR/network.json')); print(d.get('primary_ip','?'), d.get('monitor_url',''))" 2>/dev/null || echo 'see network.json')"
+      fi
+      return 0
+    fi
+  done
+  return 0
 }
 
 wait_for_network() {
   local i
   for i in {1..60}; do
     if ping -c1 -W1 8.8.8.8 &>/dev/null || ping -c1 -W1 1.1.1.1 &>/dev/null; then
+      announce_network
       return 0
     fi
     sleep 2
@@ -251,6 +270,10 @@ wait_for_network() {
 
 resolve_target_sha() {
   local configured="${DEPLOY_SHA:-}"
+  if [[ "${DEPLOY_SOURCE:-github}" == "boot" ]]; then
+    echo "${configured:-boot-sd}"
+    return 0
+  fi
   if [[ "${AUTO_PULL:-0}" == "1" ]] || [[ "$configured" == "latest" ]] || [[ -z "$configured" ]]; then
     if [[ "${DEPLOY_SOURCE:-github}" != "github" ]]; then
       echo "$configured"
@@ -304,8 +327,16 @@ do_deploy() {
 
   current_sha="$(installed_sha)"
   if ! target_sha="$(resolve_target_sha)"; then
-    eink_status failed "GitHub unreachable" "$repo_label" "network?"
-    return 1
+    if [[ "$MODE" == "bootstrap" ]] && boot_base="$(find_boot_tree)"; then
+      log "WARN: GitHub unreachable — first boot from SD card"
+      BOOT_TREE="$boot_base"
+      DEPLOY_SOURCE=boot
+      target_sha="${DEPLOY_SHA:-boot-sd}"
+      eink_status download "Using SD copy" "boot" "no GitHub"
+    else
+      eink_status failed "GitHub unreachable" "$repo_label" "network?"
+      return 1
+    fi
   fi
   short_sha="${target_sha:0:7}"
 
@@ -360,6 +391,20 @@ do_deploy() {
 
   eink_status ready "Update complete" "$short_sha" "$repo_label"
   log "Deploy complete: $short_sha (${GITHUB_REPO:-boot})"
+
+  if [[ "${AUTO_PULL:-0}" == "1" && "${DEPLOY_SOURCE:-}" == "boot" && -n "${GITHUB_REPO:-}" ]]; then
+    sudo mkdir -p /etc/pi-ambient-synth
+    sudo tee /etc/pi-ambient-synth/deploy.conf >/dev/null <<EOF
+# After SD bootstrap — timer pulls from GitHub
+DEPLOY_SOURCE=github
+AUTO_PULL=1
+DEPLOY_SHA=latest
+GITHUB_REPO=${GITHUB_REPO}
+GITHUB_BRANCH=${GITHUB_BRANCH:-main}
+ENABLE_SERVICES=${ENABLE_SERVICES:-1}
+EOF
+    log "Persisted GitHub auto-pull config for future updates"
+  fi
 
   sleep 2
   eink_restore_patch

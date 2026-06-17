@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi Ambient Synth — show LAN IP on e-ink
+After=network-online.target pi-ambient-synth-boot-display.service
+Before=pi-ambient-synth.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+ExecStart=/home/pi/pi-ambient-synth/scripts/announce_network.sh
+
+[Install]
+WantedBy=multi-user.target

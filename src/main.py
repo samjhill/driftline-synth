@@ -21,7 +21,9 @@ from midi_controller import MidiController
 from osc_client import OscClient
 from patch_generator import PatchGenerator
 from patch_model import Patch
+from midi_clock import MidiClock
 from play_tracker import PlayTracker
+from sigil_export import export_sigil
 from state_store import StateStore
 from visual_generator import VisualGenerator
 
@@ -46,6 +48,9 @@ class PiAmbientSynth:
         self.eink = EInkDisplay(config)
         self.midi = MidiController(config)
         self.play = PlayTracker()
+        self.clock = MidiClock()
+        self._sigils_dir = Path(config.get("midi", {}).get("sigils_dir", "./state/sigils"))
+        self._export_sigil = config.get("midi", {}).get("export_sigil_on_reseed", True)
         self._patch: Patch | None = None
         self._running = True
         self._reseed_morph = config.get("audio", {}).get("patch_morph_seconds", 6.0)
@@ -86,6 +91,7 @@ class PiAmbientSynth:
         self.midi.on_evolve_toggle_requested = self.toggle_evolve
         self.midi.on_recall_favorite = self.recall_favorite
         self.midi.on_weather_change = self._on_weather
+        self.midi.on_clock = self._on_clock
 
         if self.debug_midi:
             orig_cc = self.midi.on_cc
@@ -118,18 +124,26 @@ class PiAmbientSynth:
             self.osc.texture_root(self.play.lowest_active_note())
             logger.info("Hold latch: %s", on)
 
+    def _on_clock(self) -> None:
+        bpm = self.clock.tick()
+        self.osc.clock_bpm(bpm)
+
     def _on_note_on(self, note: int, velocity: int, channel: int) -> None:
         root, arp_changed = self.play.note_on(note)
         if arp_changed:
             self.osc.arp_active(self.play.arp_active)
         if root is not None:
             self.osc.texture_root(root)
+        if self.midi.is_duo_low(note):
+            return
         self.osc.note_on(note, velocity)
 
     def _on_note_off(self, note: int, velocity: int, channel: int) -> None:
         root = self.play.note_off(note)
         if not self.play.hold_latched:
             self.osc.texture_root(root)
+        if self.midi.is_duo_low(note):
+            return
         self.osc.note_off(note, velocity)
 
     def _update_display(self, patch: Patch, favorite: bool = False) -> None:
@@ -162,6 +176,12 @@ class PiAmbientSynth:
         morph = max(self._reseed_morph, 7.0)
         self.osc.send_patch(self._patch, morph_seconds=morph)
         self._update_display(self._patch)
+        if self._export_sigil:
+            path = export_sigil(self._patch, self.visual, self._sigils_dir)
+            self.osc.tape_grit(0.2, 3.0)
+            if self.config.get("eink", {}).get("enabled", True):
+                self.eink.show_status("ready", "Sigil saved", path.name[:22], "")
+            logger.info("Sigil exported: %s", path)
         logger.info("Reseeded: %s", self._patch.summary())
 
     def freeze(self) -> None:

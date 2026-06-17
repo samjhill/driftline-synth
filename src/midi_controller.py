@@ -45,6 +45,9 @@ class MidiController:
         self._last_stop_at: float = 0.0
         self._recall_window = midi.get("favorite_recall_window_ms", 600) / 1000.0
         self._weather_cc = midi.get("weather_cc", 1)
+        self._split_note = midi.get("split_note", 55)
+
+        self.on_clock: Callable[[], None] | None = None
 
         self.on_note_on: Callable[[int, int, int], None] | None = None
         self.on_note_off: Callable[[int, int, int], None] | None = None
@@ -140,8 +143,14 @@ class MidiController:
                 self.on_weather_change(msg.value / 127.0)
             if self.on_cc:
                 self.on_cc(msg.control, msg.value, ch)
+        elif msg.type == "clock":
+            if self.on_clock:
+                self.on_clock()
         elif msg.type == "sysex":
             self._handle_sysex(msg.data)
+
+    def is_duo_low(self, note: int) -> bool:
+        return note < self._split_note
 
     def _handle_shift_note(self, note: int) -> None:
         if note in (RESEED_NOTE, FREEZE_NOTE, EVOLVE_NOTE):

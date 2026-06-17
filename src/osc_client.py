@@ -91,6 +91,12 @@ class OscClient:
     def panic_bloom(self) -> None:
         self._client.send_message("/pi_synth/panic_bloom", [])
 
+    def clock_bpm(self, bpm: float) -> None:
+        self._client.send_message("/pi_synth/clock_bpm", [bpm])
+
+    def tape_grit(self, amount: float = 0.25, seconds: float = 4.0) -> None:
+        self._client.send_message("/pi_synth/tape_grit", [amount, seconds])
+
     def evolve(self, enabled: bool) -> None:
         self._client.send_message("/pi_synth/evolve", [1 if enabled else 0])
 

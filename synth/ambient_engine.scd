@@ -2,7 +2,7 @@
 (
 var patchParams, morphTime, masterVol, evolveEnabled, evolveRoutine;
 var synthGroup, textureSynth, limiterSynth, companionSynth;
-var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn;
+var textureRoot, holdLatch, arpActive, duckLevel, weatherAmt, companionOn, clockBpm;
 
 patchParams = IdentityDictionary.new;
 morphTime = 6.0;
@@ -14,6 +14,7 @@ arpActive = false;
 duckLevel = 1.0;
 weatherAmt = 0.5;
 companionOn = false;
+clockBpm = 120.0;
 
 patchParams[\filter_cutoff] = 1400.0;
 patchParams[\filter_resonance] = 0.2;
@@ -358,7 +359,30 @@ fork {
 	OSCdef(\piPanic, { ~panic.() }, \pi_synth_panic);
 	OSCdef(\piPanicBloom, { ~panicBloom.() }, \pi_synth_panic_bloom);
 
+	OSCdef(\piClockBpm, { |msg|
+		var bpm = msg[1] ? msg[1] : 120;
+		var beat = 60 / bpm;
+		clockBpm = bpm;
+		if(textureSynth.notNil, {
+			// quantize delay feel to clock
+		});
+		~morphParam.(\delay_time, (beat * [0.5, 0.75, 1.0, 1.5].choose), 0.5);
+	}, \pi_synth_clock_bpm);
+
+	OSCdef(\piTapeGrit, { |msg|
+		var amt = msg[1] ? msg[1] : 0.2;
+		var sec = msg[2] ? msg[2] : 4;
+		~morphParam.(\noise_level, amt, 0.5);
+		fork {
+			sec.wait;
+			~morphParam.(\noise_level, patchParams[\noise_level] ? 0.05, 3);
+		};
+	}, \pi_synth_tape_grit);
+
 	NetAddr.localAddr.port = port;
 	"Pi Ambient Synth listening on OSC port %".format(port).postln;
 };
+
+// Block the main sclang thread so systemd Type=simple stays active (fork alone is not enough).
+while { true } { 1.wait };
 )

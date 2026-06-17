@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi Ambient Synth LAN monitor (HTTP status page)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/pi-ambient-synth
+ExecStart=/home/pi/pi-ambient-synth/.venv/bin/python /home/pi/pi-ambient-synth/src/monitor_server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
